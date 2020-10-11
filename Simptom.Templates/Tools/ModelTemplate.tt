@@ -1,0 +1,487 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder modelsDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.ModelProject.Namespace.Name)
+	.Append(@"\Models");
+DirectoryInfo modelsDirectory = new DirectoryInfo(modelsDirectoryPath.ToString()); 
+if(!modelsDirectory.Exists)
+	modelsDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	filesToGenerate.Add(GenerateModelDesignerFile(specification, model));
+	if(new FileInfo(modelsDirectory.FullName + @"\" + model.Variable.VariableType.Name + ".cs").Exists == false)
+		filesToGenerate.Add(GenerateModelFile(specification, model));
+}
+
+filesToGenerate.Add(GenerateModelFactoryFile(specification));
+
+GenerateFiles(modelsDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateModelFile(ISpecification specification, ISpecificationModel model)
+{
+	bool commentUsed = false;
+	string comment = "TODO: This is an example field that you may want to allow searching from.  You should remove this and add your own fields.";
+
+	IFile file = new TemplateFile(specification.Settings.ModelsNamespace, model.Variable.VariableType.Name, "cs");
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	
+	file.Components.Enqueue(GenerateModelClass(specification, file.Namespace, model));
+			
+	if(model.Key != null)
+		file.Components.Enqueue(GenerateKeyClass(specification, file.Namespace, model));
+
+	if(model.HasRepositoryAndService)
+	{
+		file.Components.Enqueue(GenerateSearchClass(specification, file.Namespace, model, commentUsed ? null : comment));
+		file.Components.Enqueue(GenerateSearchMultipleClass(specification, file.Namespace, model, commentUsed ? null : comment));
+			
+		commentUsed = true;
+	}
+
+	return file;
+}
+
+IFile GenerateModelDesignerFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.ModelsNamespace, model.Variable.VariableType.Name + ".Designer", "cs");
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.RepositoryNamespace);
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	
+	file.Components.Enqueue(GenerateModelDesignerClass(specification, file.Namespace, model));
+	
+	if(model.Key != null)
+		file.Components.Enqueue(GenerateKeyDesignerClass(specification, file.Namespace, model));
+
+	return file;
+}
+
+IFile GenerateModelFactoryFile(ISpecification specification)
+{
+	IFile file = new TemplateFile(specification.Settings.ModelsNamespace, specification.ModelFactoryClass.Name, "cs");
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	
+	file.Components.Enqueue(GenerateModelFactoryClass(specification, file.Namespace));
+
+	return file;
+}
+#>
+<#+
+IClass GenerateModelClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IClass _class = new TemplateClass(_namespace, model.Variable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkModelsNamespace, model.Interface.VariableType.Name));
+	
+	return _class;
+}
+
+IClass GenerateModelDesignerClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	return GenerateModelDesignerClass(specification, _namespace, model, new List<ISpecificationProperty>());
+}
+
+IClass GenerateModelDesignerClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, IEnumerable<ISpecificationProperty> additionalProperties)
+{
+	IClass _class = new TemplateClass(_namespace, model.Variable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.Inherits(new TemplateGenericClass(TestingHelper.RepositoryNamespace, specification.ModelClass.Name, new List<string>(){ model.KeyInterface.VariableType.Name }));
+	_class.WillImplement(new TemplateInterface(TestingHelper.RepositoryFrameworkNamespace, model.Interface.VariableType.Name));
+		
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values.Concat(additionalProperties))
+	{
+		string _type = specificationProperty.IsList ? specificationProperty.ListOf : specificationProperty.PropertyType;
+
+		if(TemplateClass.SystemClasses.Any(_systemClass => _systemClass.Name == specificationProperty.PropertyType))
+		{
+			INamespace rootNamespace = null;
+			if(specification.Enumerations.Values.Any(_enum => _enum.Name == specificationProperty.PropertyType))
+				rootNamespace = specification.Settings.FrameworkNamespace;
+			else
+				rootNamespace = specification.Settings.ModelsNamespace;
+
+			_type = _type.Replace(specificationProperty.PropertyType, rootNamespace.Name + "." + specificationProperty.PropertyType);
+		}
+
+		_class.Add(new TemplateProperty(new TemplateVariableType(_type), specificationProperty.Name, true, true));
+	}
+
+	_class.Add(ConstructorByKey(model));
+	
+	_class.NewRegion(specification.ModelInterface.Name);
+	_class.Add(ValidateFunction(model));
+	
+	return _class;
+}
+
+IClass GenerateModelFactoryClass(ISpecification specification, INamespace _namespace)
+{
+	IClass _class = specification.ModelFactoryClass;
+	_class.WillImplement(specification.ModelFactoryInterface);
+
+	foreach(ISpecificationModel model in specification.Models.Values)
+	{
+		_class.Add(GenerateModelFunction(model));
+
+		if(model.Key != null)
+			_class.Add(GenerateKeyFunction(model));
+
+		if(model.HasRepositoryAndService)
+		{
+			_class.Add(GenerateSearchFunction(model));
+			_class.Add(GenerateSearchMultipleFunction(model));
+		}
+	}
+	
+	return _class;
+}
+
+IClass GenerateKeyClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IClass _class = new TemplateClass(_namespace, model.KeyVariable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkModelsNamespace, model.KeyInterface.VariableType.Name));
+	
+	_class.Add(GetHashCodeFunction(model));
+
+	return _class;
+}
+
+IClass GenerateKeyDesignerClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IClass _class = new TemplateClass(_namespace, model.KeyVariable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkModelsNamespace, model.KeyInterface.VariableType.Name));
+	
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+	{
+		IVariableType variableType = new TemplateVariableType(specificationProperty.PropertyType);
+			
+		IProperty property = new TemplateProperty(specificationProperty.IsList ? TemplatesHelper.ListOf(variableType) : variableType, specificationProperty.Name, true, true);
+
+		_class.Add(property);
+	}
+		
+	_class.Add(KeyConstructor(model));
+	_class.Add(CompareToFunction(model));
+	_class.Add(EqualsFunction(model));
+	_class.Add(ValidateKeyFunction(model));
+
+	return _class;
+}
+
+IClass GenerateSearchClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	return GenerateSearchClass(specification, _namespace, model);
+}
+
+IClass GenerateSearchClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, string comment)
+{
+	IClass _class = new TemplateClass(_namespace, model.SearchVariable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkModelsNamespace, model.SearchInterface.VariableType.Name));
+
+	if(!string.IsNullOrWhiteSpace(comment))
+		_class.Add(new TemplateProperty(comment, TemplateVariableType.String, "Example", true, true));
+
+	_class.Add(ValidateSearchFunction(model));
+	
+	return _class;
+}
+
+IClass GenerateSearchMultipleClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	return GenerateSearchMultipleClass(specification, _namespace, model);
+}
+
+IClass GenerateSearchMultipleClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, string comment)
+{
+	IClass _class = new TemplateClass(_namespace, model.SearchMultipleVariable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkModelsNamespace, model.SearchMultipleInterface.VariableType.Name));
+	
+	if(!string.IsNullOrWhiteSpace(comment))
+		_class.Add(new TemplateProperty(comment, TemplateVariableType.String, "Example", true, true));
+
+	_class.Add(ValidateSearchFunction(model));
+	
+	return _class;
+}
+#>
+<#+
+IFunction CompareToFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(new TemplateVariableType("object"), "obj") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType("int"), "CompareTo", parameters);
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IConstructor ConstructorByKey(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.KeyInterface.VariableType.Name, model.KeyInterface.InstanceName) };
+
+	IConstructor constructor = new TemplateConstructor(parameters);
+	constructor.Base = parameters;
+	
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values.Where(_property => _property.Relationship != null && _property.IsList))
+		constructor.Add(specificationProperty.Name + " = new List<" + specificationProperty.Relationship.RelatedModel.Interface.VariableType.Name + ">();");
+
+	return constructor;
+}
+
+IFunction EqualsFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("object", "obj") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Boolean, "Equals", parameters);
+
+	StringBuilder equalityCheck = new StringBuilder();
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+	{
+		if(equalityCheck.Length > 0)
+			equalityCheck.Append(" && ");
+
+		if(specificationProperty.Relationship != null)
+			equalityCheck.Append("this.").Append(specificationProperty.Name).Append(".Key.Equals(").Append(model.KeyInterface.InstanceName).Append(".").Append(specificationProperty.Name).Append(".Key)");
+		else
+			equalityCheck.Append("this.").Append(specificationProperty.Name).Append(" == ").Append(model.KeyInterface.InstanceName).Append(".").Append(specificationProperty.Name);
+	}
+
+	function.Add("if(obj == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Object was null when comparing " + model.Variable.VariableType.Name + " keys") + ");");
+	function.Add();
+	function.Add("if(!(obj is " + model.KeyInterface.VariableType.Name + "))");
+	function.Add("\treturn false;");
+	function.Add();
+	function.Add(model.KeyInterface.VariableType.Name + " " + model.KeyInterface.InstanceName + " = (" + model.KeyInterface.VariableType.Name + ")obj;");
+	function.Add();
+	function.Add("return " + equalityCheck.ToString() + ";");
+
+	return function;
+}
+
+IFunction GenerateKeyFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	
+	if(model.Key != null)
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			parameters.Add(new TemplateVariable(specificationProperty.PropertyType, specificationProperty.InstanceName));
+
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType(model.KeyInterface.VariableType.Name), "Generate" + model.KeyVariable.VariableType.Name, parameters);
+	
+	function.Add("return new " + model.KeyVariable.VariableType.Name + "(" + TemplatesHelper.ListOutVariables(parameters) + ");");
+
+	return function;
+}
+
+IFunction GenerateModelFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+
+	if(model.Key != null)
+		parameters.Add(model.KeyInterface);
+
+	IFunction function = new TemplateFunction(Privacy.Public, model.Interface.VariableType.Name, "Generate" + model.Variable.VariableType.Name, parameters);
+	function.Add("return new " + model.Variable.VariableType.Name + "(" + TemplatesHelper.ListOutVariables(parameters) + ");");
+
+	return function;
+}
+
+IFunction GenerateSearchFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType(model.SearchInterface.VariableType.Name), "Generate" + model.SearchVariable.VariableType.Name);
+	
+	function.Add("return new " + model.SearchVariable.VariableType.Name + "();");
+
+	return function;
+}
+
+IFunction GenerateSearchMultipleFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType(model.SearchMultipleInterface.VariableType.Name), "Generate" + model.SearchMultipleVariable.VariableType.Name);
+	
+	function.Add("return new " + model.SearchMultipleVariable.VariableType.Name + "();");
+
+	return function;
+}
+
+IFunction GetHashCodeFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Int, "GetHashCode");
+	
+	function.Add("return base.GetHashCode();");
+
+	return function;
+}
+
+IConstructor KeyConstructor(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+		parameters.Add(new TemplateVariable(specificationProperty.PropertyType, specificationProperty.InstanceName));
+
+	IConstructor constructor = new TemplateConstructor(parameters);
+
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+		constructor.Add("this." + specificationProperty.Name + " = " + specificationProperty.InstanceName + ";");
+
+	return constructor;
+}
+
+IFunction ValidateFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Validate");
+	function.Add("base.Validate();");
+	function.Add();
+
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+	{
+		if(specificationProperty.Relationship != null)
+		{
+			ISpecificationModel relatedModel = specificationProperty.Relationship.RelatedModel;
+			
+			foreach(string line in GenerateValidateRelatedModelLines(specificationProperty, relatedModel))
+				function.Add(line);
+		}
+		else if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?"
+			|| specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?"
+			|| specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+		{
+			string prefix = string.Empty;
+
+			if(specificationProperty.PropertyType.Contains("?") && specificationProperty.Required)
+				function.Add("RepositoryHelper.ValidateNotNull(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", this." + specificationProperty.Name + ");");
+
+			string temp = prefix + "RepositoryHelper.ValidateBounds(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", this." + specificationProperty.Name;
+
+			temp +=  ", ";
+
+			if(specificationProperty.Minimum != null)
+			{
+				if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")
+					temp += "DateTime.Parse(" + TemplatesHelper.FormatString(specificationProperty.Minimum.ToString()) + ")";
+				else
+					temp += specificationProperty.Minimum.ToString();
+			}
+			else
+			{
+				if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")
+					temp += "DateTime.MinValue";
+				else if(specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?")
+					temp += "double.MinValue";
+				else if(specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+					temp += "int.MinValue";
+			}
+				
+			temp +=  ", ";
+			
+			if(specificationProperty.Maximum != null)
+			{
+				if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")
+					temp += "DateTime.Parse(" + TemplatesHelper.FormatString(specificationProperty.Maximum.ToString()) + ")";
+				else
+					temp += specificationProperty.Maximum.ToString();
+			}
+			else
+			{
+				if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")
+					temp += "DateTime.MaxValue";
+				else if(specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?")
+					temp += "double.MaxValue";
+				else if(specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+					temp += "int.MaxValue";
+			}
+				
+			temp +=  ");";
+
+			function.Add(temp);
+		}
+		else if(specificationProperty.PropertyType == "string")
+		{
+			if(specificationProperty.Required)
+			{
+				function.Add("RepositoryHelper.ValidateNotNull(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", this." + specificationProperty.Name + ");");
+				function.Add("RepositoryHelper.ValidateBounds(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", this." + specificationProperty.Name + ", 1, " + specificationProperty.Maximum + ");");
+			}
+			else
+			{
+				function.Add("RepositoryHelper.ValidateBounds(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", this." + specificationProperty.Name + ", 0, " + specificationProperty.Maximum + ");");
+			}
+		}
+	}
+
+	return function;
+}
+
+IFunction ValidateKeyFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, TemplateVariableType.Void, "Validate");
+
+	return function;
+}
+
+IFunction ValidateSearchFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, TemplateVariableType.Void, "Validate");
+
+	function.Add("//TODO: If some aspects of your search object are conditional, e.g. a field is required if another field is specified, check for these conditions here...");
+
+	return function;
+}
+#>
+<#+
+IList<string> GenerateValidateRelatedModelLines(ISpecificationProperty specificationProperty, ISpecificationModel relatedModel)
+{
+    IList<string> lines = new List<string>();
+	
+	if(specificationProperty.Required || specificationProperty.IsList)
+		lines.Add("RepositoryHelper.ValidateNotNull(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", this." + specificationProperty.Name + ");");
+
+	if(specificationProperty.IsList)
+	{
+		lines.Add("foreach(" + relatedModel.Interface.VariableType.Name + " " + relatedModel.Interface.InstanceName + " in this." + specificationProperty.Name + ")");
+		lines.Add("\tRepositoryHelper.ValidateNotNull(" + TemplatesHelper.FormatString("Single " + relatedModel.Variable.Reference) + ", " + relatedModel.Interface.InstanceName + ");");
+	}
+
+	return lines;
+}
+#>

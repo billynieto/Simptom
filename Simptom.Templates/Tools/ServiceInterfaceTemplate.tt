@@ -1,0 +1,95 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder servicesDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.FrameworkNamespace.Name)
+	.Append(@"\Services");
+DirectoryInfo servicesDirectory = new DirectoryInfo(servicesDirectoryPath.ToString());
+if(!servicesDirectory.Exists)
+	servicesDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values) 
+{
+	if(!model.HasRepositoryAndService)
+		continue;
+		
+	filesToGenerate.Add(GenerateServiceInterfaceDesignerFile(specification, model));
+	if(new FileInfo(servicesDirectory.FullName + @"\" + model.ServiceInterface.VariableType.Name + ".cs").Exists == false)
+		filesToGenerate.Add(GenerateServiceInterfaceFile(specification, model));
+}
+
+GenerateFiles(servicesDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateServiceInterfaceFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.FrameworkServicesNamespace, model.ServiceInterface.VariableType.Name, "cs");
+	
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+
+	file.Components.Enqueue(GenerateServiceInterface(specification, file.Namespace, model));
+
+	return file;
+}
+
+IFile GenerateServiceInterfaceDesignerFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.FrameworkServicesNamespace, model.ServiceInterface.VariableType.Name + ".Designer", "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.FrameworkRepositoriesNamespace);
+	
+	file.Components.Enqueue(GenerateServiceDesignerInterface(specification, file.Namespace, model));
+		
+	return file;
+}
+#>
+<#+
+IInterface GenerateServiceInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.ServiceInterface.VariableType.Name);
+	_interface.IsPartial = true;
+	_interface.WillImplement(new TemplateGenericInterface(TestingHelper.RepositoryFrameworkNamespace, specification.ServiceInterface.Name, new List<string>() { model.Interface.VariableType.Name, model.KeyInterface.VariableType.Name, model.SearchInterface.VariableType.Name, model.SearchMultipleInterface.VariableType.Name }));
+	
+	return _interface;
+}
+
+IInterface GenerateServiceDesignerInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.ServiceInterface.VariableType.Name);
+	_interface.IsPartial = true;
+	_interface.WillImplement(new TemplateGenericInterface(TestingHelper.RepositoryFrameworkNamespace, specification.ServiceInterface.Name, new List<string>() { model.Interface.VariableType.Name, model.KeyInterface.VariableType.Name, model.SearchInterface.VariableType.Name, model.SearchMultipleInterface.VariableType.Name }));
+	
+	return _interface;
+}
+#>

@@ -1,0 +1,142 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{3A0D08AB-03A1-4539-8651-29357939C0D0}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Simptom.Framework</RootNamespace>
+    <AssemblyName>Simptom.Framework</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Repository, Version=2.2.7212.29485, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\T5.Repository.2.2.0\lib\Repository.dll</HintPath>
+    </Reference>
+    <Reference Include="Repository.Framework, Version=2.2.7212.29098, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\T5.Repository.2.2.0\lib\Repository.Framework.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Models\IActivity.cs" />
+    <Compile Include="Models\IActivity.Designer.cs">
+      <DependentUpon>IActivity.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Models\IActivityCategory.cs" />
+    <Compile Include="Models\IActivityCategory.Designer.cs">
+      <DependentUpon>IActivityCategory.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Models\IFlareUp.cs" />
+    <Compile Include="Models\IFlareUp.Designer.cs">
+      <DependentUpon>IFlareUp.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Models\IModelFactory.cs" />
+    <Compile Include="Models\IParticipation.cs" />
+    <Compile Include="Models\IParticipation.Designer.cs">
+      <DependentUpon>IParticipation.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Models\ISymptom.cs" />
+    <Compile Include="Models\ISymptom.Designer.cs">
+      <DependentUpon>ISymptom.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Models\ISymptomCategory.cs" />
+    <Compile Include="Models\ISymptomCategory.Designer.cs">
+      <DependentUpon>ISymptomCategory.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Models\IUser.cs" />
+    <Compile Include="Models\IUser.Designer.cs">
+      <DependentUpon>IUser.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Repositories\IActivityCategoryRepository.cs" />
+    <Compile Include="Repositories\IActivityCategoryRepository.Designer.cs">
+      <DependentUpon>IActivityCategoryRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\IActivityRepository.cs" />
+    <Compile Include="Repositories\IActivityRepository.Designer.cs">
+      <DependentUpon>IActivityRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\IFlareUpRepository.cs" />
+    <Compile Include="Repositories\IFlareUpRepository.Designer.cs">
+      <DependentUpon>IFlareUpRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\IParticipationRepository.cs" />
+    <Compile Include="Repositories\IParticipationRepository.Designer.cs">
+      <DependentUpon>IParticipationRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\ISymptomCategoryRepository.cs" />
+    <Compile Include="Repositories\ISymptomCategoryRepository.Designer.cs">
+      <DependentUpon>ISymptomCategoryRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\ISymptomRepository.cs" />
+    <Compile Include="Repositories\ISymptomRepository.Designer.cs">
+      <DependentUpon>ISymptomRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\IUserRepository.cs" />
+    <Compile Include="Repositories\IUserRepository.Designer.cs">
+      <DependentUpon>IUserRepository.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\IActivityCategoryService.cs" />
+    <Compile Include="Services\IActivityCategoryService.Designer.cs">
+      <DependentUpon>IActivityCategoryService.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\IActivityService.cs" />
+    <Compile Include="Services\IActivityService.Designer.cs">
+      <DependentUpon>IActivityService.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\IFlareUpService.cs" />
+    <Compile Include="Services\IFlareUpService.Designer.cs">
+      <DependentUpon>IFlareUpService.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\IParticipationService.cs" />
+    <Compile Include="Services\IParticipationService.Designer.cs">
+      <DependentUpon>IParticipationService.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\ISymptomCategoryService.cs" />
+    <Compile Include="Services\ISymptomCategoryService.Designer.cs">
+      <DependentUpon>ISymptomCategoryService.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\ISymptomService.cs" />
+    <Compile Include="Services\ISymptomService.Designer.cs">
+      <DependentUpon>ISymptomService.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\IUserService.cs" />
+    <Compile Include="Services\IUserService.Designer.cs">
+      <DependentUpon>IUserService.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

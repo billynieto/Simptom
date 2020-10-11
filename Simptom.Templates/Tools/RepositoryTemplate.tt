@@ -1,0 +1,506 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder repositoriesDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.RepositoryProject.Namespace.Name)
+	.Append(@"\Repositories");
+DirectoryInfo repositoriesDirectory = new DirectoryInfo(repositoriesDirectoryPath.ToString());
+if(!repositoriesDirectory.Exists)
+	repositoriesDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	if(!model.HasRepositoryAndService)
+		continue;
+
+	FileInfo repositoryFileInfo = new FileInfo(repositoriesDirectory.FullName + @"\" + model.RepositoryVariable.VariableType.Name + ".cs"); 
+	if(!repositoryFileInfo.Exists)
+		filesToGenerate.Add(GenerateRepositoryFile(specification, model));
+}
+
+string repositoryBaseName = "RepositoryBase";
+FileInfo repositoryBaseFileInfo = new FileInfo(repositoriesDirectory.FullName + @"\" + repositoryBaseName + ".cs"); 
+if(!repositoryBaseFileInfo.Exists)
+	filesToGenerate.Add(GenerateRepositoryBaseFile(specification, repositoryBaseName));
+
+GenerateFiles(repositoriesDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateRepositoryBaseFile(ISpecification specification, string repositoryBaseName)
+{
+	IFile file = new TemplateFile(specification.Settings.RepositoriesNamespace, repositoryBaseName, "cs");
+
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.Uses(TemplateNamespace.System_Data);
+	file.Uses(TemplateNamespace.System_Linq);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.FrameworkRepositoriesNamespace);
+	
+	file.Components.Enqueue(GenerateRepositoryBaseClass(specification, file.Namespace, repositoryBaseName));
+
+	return file;
+}
+
+IFile GenerateRepositoryFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.RepositoriesNamespace, model.RepositoryVariable.VariableType.Name, "cs");
+
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.Uses(TemplateNamespace.System_Data);
+	file.Uses(TemplateNamespace.System_Linq);
+	file.Uses(TemplateNamespace.System_Text);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.FrameworkRepositoriesNamespace);
+	
+	file.Components.Enqueue(GenerateRepositoryClass(specification, file.Namespace, model));
+
+	return file;
+}
+#>
+<#+
+IClass GenerateRepositoryBaseClass(ISpecification specification, INamespace _namespace, string repositoryBaseName)
+{
+	tKey = new TemplateVariableType("TKey");
+	tModel = new TemplateVariableType("TModel");
+	tSingleSearch = new TemplateVariableType("TSingleSearch");
+	tMultipleSearch = new TemplateVariableType("TMultipleSearch");
+	genericModelVariable = new TemplateVariable(tModel, "model");
+	genericModelVariableList = new TemplateVariable(TemplatesHelper.EnumerableOf(tModel), "models");
+	tModelParameter = new List<IVariable>(){ genericModelVariable };
+	tModelsParameter = new List<IVariable>(){ genericModelVariableList };
+	tModelTypes = new List<IVariableType>(){ tModel, tKey, tSingleSearch, tMultipleSearch };
+
+	IGenericClass _class = new TemplateGenericClass(_namespace, repositoryBaseName, tModelTypes);
+	_class.WillImplement(new TemplateGenericInterface(TestingHelper.RepositoryFrameworkNamespace, specification.RepositoryInterface.Name, tModelTypes));
+	_class.Where(tModel, new TemplateGenericInterface(specification.Settings.FrameworkModelsNamespace, specification.ModelInterface.Name, new List<IVariableType>(){ tKey }));
+	_class.Where(tKey, specification.KeyInterface);
+	_class.Where(tSingleSearch, specification.SingleSearchInterface);
+	_class.Where(tMultipleSearch, specification.MultipleSearchInterface);
+	
+	_class.Add(new TemplateProperty(TemplateVariableType.Boolean, "IsOpen", "return State == ConnectionState.Open;", null));
+	_class.Add(specification.ModelFactoryVariable, false, false);
+	_class.Add(new TemplateProperty(specification.ConnectionStateVariable.VariableType, "State", "throw new NotImplementedException(" + TemplatesHelper.FormatString("Checking the Repository's connection state must be updated!") + ");", null){ Summary = "TODO: When you implement your data providers, you must replace this with the connection's State logic." });
+
+	_class.Add(BaseConstructor(specification));
+
+	_class.NewRegion();
+
+	_class.Add(BaseCloseFunction());
+	_class.Add(BaseDeleteFunction(specification));
+	_class.Add(BaseDeleteMultipleFunction(specification));
+	_class.Add(BaseExistsFunction(specification));
+	_class.Add(BaseExistsFunctionWithTransaction(specification));
+	_class.Add(BaseExistsMultipleFunction(specification));
+	_class.Add(BaseExistsMultipleFunctionWithTransaction(specification));
+	_class.Add(BaseInsertFunction(specification));
+	_class.Add(BaseInsertMultipleFunction(specification));
+	_class.Add(BaseOpenFunction());
+	_class.Add(BaseSelectFunction(specification));
+	_class.Add(BaseSelectFunctionWithTransaction(specification));
+	_class.Add(BaseSelectSingleFunction(specification));
+	_class.Add(BaseSelectSingleFunctionWithTransaction(specification));
+	_class.Add(BaseStartTransactionFunction(specification));
+	_class.Add(BaseUpdateFunction(specification));
+	_class.Add(BaseUpdateMultipleFunction(specification));
+
+	return _class;
+}
+
+IClass GenerateRepositoryClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IClass _class = new TemplateClass(_namespace, model.RepositoryVariable.VariableType.Name);
+	_class.Inherits(new TemplateGenericClass(specification.Settings.RepositoriesNamespace, "RepositoryBase", new List<string>() { model.Interface.VariableType.Name, model.KeyInterface.VariableType.Name, model.SearchInterface.VariableType.Name, model.SearchMultipleInterface.VariableType.Name }));
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkRepositoriesNamespace, model.RepositoryInterface.VariableType.Name));
+	
+	_class.Add(PrimaryConstructor(specification));
+	_class.Add(model.ReadOnly || !model.CanDelete ? DeleteMultipleErrorsOutFunction(specification, model) : DeleteMultipleFunction(specification, model));
+	_class.Add(ExistsMultipleFunction(specification, model));
+	_class.Add(model.ReadOnly || !model.CanInsert ? InsertMultipleErrorsOutFunction(specification, model) : InsertMultipleFunction(specification, model));
+	_class.Add(SelectFunction(specification, model));
+	_class.Add(model.Tier == Tier.Primary ? SelectSingleFunction(specification, model) : SelectSingleErrorsOutFunction(specification, model));	
+	_class.Add(model.ReadOnly || !model.CanUpdate ? UpdateMultipleErrorsOutFunction(specification, model) : UpdateMultipleFunction(specification, model));
+
+	return _class;
+}
+#>
+<#+
+IVariableType tKey;
+IVariableType tModel;
+IVariableType tSingleSearch;
+IVariableType tMultipleSearch;
+IVariable genericModelVariable;
+IVariable genericModelVariableList;
+IList<IVariable> tModelParameter;
+IList<IVariable> tModelsParameter;
+IList<IVariableType> tModelTypes;
+
+IFunction BaseCloseFunction()
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Close");
+	function.Add("throw new NotImplementedException();");
+	
+	return function;
+}
+
+IConstructor BaseConstructor(ISpecification specification)
+{
+	IConstructor constructor = new TemplateConstructor(specification.ModelFactoryParameter);
+	constructor.Add("this.modelFactory = modelFactory;");
+	constructor.Add();
+	constructor.Add("//TODO: provide basic common initialization here,");
+	constructor.Add("//  like receiving database connection objects as");
+	constructor.Add("//  parameters using Dependency Injection.");
+
+	return constructor;
+}
+
+IFunction BaseDeleteFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tKey, "key"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Delete", parameters);
+	function.Add("if(key == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Key") + ");");
+	function.Add();
+	function.Add("Delete(new List<" + tKey.Name + ">(){ key }, " + specification.TransactionVariable.InstanceName + ");");
+
+	return function;
+}
+
+IFunction BaseDeleteMultipleFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + tKey + ">", "keys"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Delete", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Delete (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseExistsFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tKey, "key") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Boolean, "Exists", parameters);
+	function.Add("if(key == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Key") + ");");
+	function.Add();
+	function.Add("return Exists(new List<" + tKey.Name + ">(){ key }).FirstOrDefault() != null;");
+
+	return function;
+}
+
+IFunction BaseExistsFunctionWithTransaction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tKey, "key"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Boolean, "Exists", parameters);
+	function.Add("if(key == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Key") + ");");
+	function.Add();
+	function.Add("return Exists(new List<" + tKey.Name + ">(){ key }, transaction).FirstOrDefault() != null;");
+
+	return function;
+}
+
+IFunction BaseExistsMultipleFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + tKey + ">", "keys") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, "IEnumerable<" + tKey + ">", "Exists", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Exists (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseExistsMultipleFunctionWithTransaction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + tKey + ">", "keys"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, "IEnumerable<" + tKey + ">", "Exists", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Exists (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseInsertFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tModel.Name, "model"), specification.TransactionVariable };
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert", parameters);
+	function.Add("if(model == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Model") + ");");
+	function.Add();
+	function.Add("Insert(new List<" + tModel.Name + ">(){ model }, " + specification.TransactionVariable.InstanceName + ");");
+
+	return function;
+}
+
+IFunction BaseInsertMultipleFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + tModel.Name + ">", "models"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Insert (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseOpenFunction()
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Open");
+	function.Add("throw new NotImplementedException();");
+	
+	return function;
+}
+
+IFunction BaseSelectFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tMultipleSearch, "search") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, "IEnumerable<" + tModel.Name + ">", "Select", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Select (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseSelectFunctionWithTransaction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tMultipleSearch, "search"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, "IEnumerable<" + tModel.Name + ">", "Select", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Select (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseSelectSingleFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tSingleSearch, "search") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, tModel, "Select", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Select must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseSelectSingleFunctionWithTransaction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tSingleSearch, "search"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, tModel, "Select", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Select must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseStartTransactionFunction(ISpecification specification)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, specification.TransactionVariable.VariableType, "StartTransaction");
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("You must specify how to start a Transaction depending on your database type.") + ");");
+	
+	return function;
+}
+
+IFunction BaseUpdateFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(tModel.Name, "model"), specification.TransactionVariable };
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Update must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction BaseUpdateMultipleFunction(ISpecification specification)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + tModel.Name + ">", "model"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update", parameters);
+	function.Add("throw new NotImplementedException(" + TemplatesHelper.FormatString("Update (multiple) must be overridden!") + ");");
+
+	return function;
+}
+
+IFunction DeleteMultipleFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + model.KeyInterface.VariableType.Name + ">", "keys"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Delete", parameters);
+	function.Add("if(keys == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Keys") + ");");
+	function.Add("if(keys.Any(_key => _key == null))");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("One of the provided Keys was NULL.") + ");");
+	function.Add();
+	function.Add("//TODO: Delete these models from the repository.");
+	function.Add();
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction DeleteMultipleErrorsOutFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + model.KeyInterface.VariableType.Name + ">", "keys"), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Delete", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is Read Only!") + ");");
+
+	return function;
+}
+
+IFunction ExistsMultipleFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + model.KeyInterface.VariableType.Name + ">", "keys") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, "IEnumerable<" + model.KeyInterface.VariableType.Name + ">", "Exists", parameters);
+	function.Add("if(keys == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Keys") + ");");
+	function.Add("if(keys.Any(_key => _key == null))");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("One of the provided Keys was NULL.") + ");");
+	function.Add();
+	function.Add("//TODO: Check to see if these models exist in the repository.");
+	function.Add();
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction InsertMultipleFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName), specification.TransactionVariable };
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Insert", parameters);
+	function.Add("if(" + model.Interface.ListInstanceName + " == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(model.Interface.ListInstanceName) + ");");
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\tif(" + model.Interface.InstanceName + " == null)");
+	function.Add("\t\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Single " + model.Interface.VariableType.Name) + ");");
+	function.Add();
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\t" + model.Interface.InstanceName + ".Validate();");
+	function.Add();
+	function.Add("//TODO: INSERT");
+	function.Add();
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction InsertMultipleErrorsOutFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName), specification.TransactionVariable };
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Insert", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is Read Only!") + ");");
+
+	return function;
+}
+
+IConstructor PrimaryConstructor(ISpecification specification)
+{
+	IConstructor constructor = new TemplateConstructor(specification.ModelFactoryParameter);
+	constructor.Base = specification.ModelFactoryParameter;
+	constructor.Add("//TODO: Fill this in with your specific Repository requirements,");
+	constructor.Add("//  most likely a database connection string or objects that");
+	constructor.Add("//  know how to connect to the database in question.");
+
+	return constructor;
+}
+
+IFunction SelectFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.SearchMultipleInterface.VariableType.Name, "search") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplatesHelper.EnumerableOf(model.Interface.VariableType), "Select", parameters);
+	function.Add("//TODO: Search for all items in the repository and filter out based on the provided Search object.");
+	function.Add();
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction SelectSingleFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.SearchInterface.VariableType.Name, "search") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, model.Interface.VariableType.Name, "Select", parameters);
+	function.Add("//TODO: Find a specific model.  There should only be 1 item found and returned.");
+	function.Add();
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction SelectSingleErrorsOutFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.SearchInterface.VariableType.Name, "search") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, model.Interface.VariableType.Name, "Select", parameters);
+	function.Add("throw new NotSupportedException();");
+
+	return function;
+}
+
+IFunction UpdateMultipleFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Update", parameters);
+	function.Add("if(" + model.Interface.ListInstanceName + " == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(model.Interface.ListInstanceName) + ");");
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\tif(" + model.Interface.InstanceName + " == null)");
+	function.Add("\t\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Single " + model.Variable.VariableType.Name) + ");");
+	function.Add();
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\t" + model.Interface.InstanceName + ".Validate();");
+	function.Add();
+	function.Add("//TODO: UPDATE");
+	function.Add();
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction UpdateMultipleErrorsOutFunction(ISpecification specification, ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName), specification.TransactionVariable };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Update", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is Read Only!") + ");");
+
+	return function;
+}
+#>

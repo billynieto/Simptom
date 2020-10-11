@@ -1,0 +1,12 @@
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Database\bin\Debug\Simptom.Database.dacpac
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Database\bin\Debug\Simptom.Database.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Database\bin\Debug\Simptom.Database.pdb
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Database\obj\Debug\Simptom.Database.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Database\obj\Debug\Simptom.Database.pdb
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Database\obj\Debug\Simptom.Database.sqlprojAssemblyReference.cache
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Database\bin\Debug\Simptom.Database.dacpac
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Database\bin\Debug\Simptom.Database.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Database\bin\Debug\Simptom.Database.pdb
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Database\obj\Debug\Simptom.Database.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Database\obj\Debug\Simptom.Database.pdb
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Database\obj\Debug\Simptom.Database.sqlprojAssemblyReference.cache

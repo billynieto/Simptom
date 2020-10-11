@@ -1,0 +1,65 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder enumerationsDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.FrameworkNamespace.Name);
+DirectoryInfo enumerationsDirectory = new DirectoryInfo(enumerationsDirectoryPath.ToString()); 
+if(!enumerationsDirectory.Exists)
+	enumerationsDirectory.Create();
+	
+foreach(ISpecificationEnumeration specificationEnumeration in specification.Enumerations.Values)
+	filesToGenerate.Add(GenerateEnumerationFile(specification, specificationEnumeration));
+
+GenerateFiles(enumerationsDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateEnumerationFile(ISpecification specification, ISpecificationEnumeration specificationEnumeration)
+{
+	IFile file = new TemplateFile(specification.Settings.FrameworkNamespace, specificationEnumeration.Name, "cs");
+
+	file.Uses(TemplateNamespace.System);
+	
+	file.Components.Enqueue(GenerateEnumeration(file.Namespace, specificationEnumeration));
+
+	return file;
+}
+#>
+<#+
+IEnumeration GenerateEnumeration(INamespace _namespace, ISpecificationEnumeration specificationEnumeration)
+{
+	IEnumeration enumeration = new TemplateEnumeration(_namespace, specificationEnumeration.Name);
+	
+	foreach(ISpecificationEnumerationItem item in specificationEnumeration.Items)
+	{
+		if(item.Value != null)
+			enumeration.Items.Add(new TemplateEnumerationItem(item.Name, item.Value));
+		else
+			enumeration.Items.Add(new TemplateEnumerationItem(item.Name));
+	}
+	
+	return enumeration;
+}
+#>

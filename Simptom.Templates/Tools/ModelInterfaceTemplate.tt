@@ -1,0 +1,220 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder modelsDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.FrameworkNamespace.Name)
+	.Append(@"\Models");
+DirectoryInfo modelsDirectory = new DirectoryInfo(modelsDirectoryPath.ToString()); 
+if(!modelsDirectory.Exists)
+	modelsDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	filesToGenerate.Add(GenerateModelInterfaceDesignerFile(specification, model));
+	if(new FileInfo(modelsDirectory.FullName + @"\" + model.Interface.VariableType.Name + ".cs").Exists == false)
+		filesToGenerate.Add(GenerateModelInterfaceFile(specification, model));
+}
+
+filesToGenerate.Add(GenerateModelFactoryInterfaceFile(specification));
+
+GenerateFiles(modelsDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateModelInterfaceFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.FrameworkModelsNamespace, model.Interface.VariableType.Name, "cs");
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	
+	file.Components.Enqueue(GenerateModelInterface(specification, file.Namespace, model));
+			
+	if(model.HasRepositoryAndService)
+	{
+		file.Components.Enqueue(GenerateSearchInterface(specification, file.Namespace, model));
+		file.Components.Enqueue(GenerateSearchMultipleInterface(specification, file.Namespace, model));
+	}
+
+	return file;
+}
+
+IFile GenerateModelInterfaceDesignerFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.FrameworkModelsNamespace, model.Interface.VariableType.Name + ".Designer", "cs");
+
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	
+	file.Components.Enqueue(GenerateModelDesignerInterface(specification, file.Namespace, model));
+		
+	if(model.Key != null)
+		file.Components.Enqueue(GenerateKeyDesignerInterface(specification, file.Namespace, model));
+
+	return file;
+}
+
+IFile GenerateModelFactoryInterfaceFile(ISpecification specification)
+{
+	IFile file = new TemplateFile(specification.Settings.FrameworkModelsNamespace, specification.ModelFactoryInterface.Name, "cs");
+	file.Uses(TemplateNamespace.System);
+
+	file.Components.Enqueue(GenerateModelFactoryInterface(specification, file.Namespace));
+
+	return file;
+}
+#>
+<#+
+IInterface GenerateKeyDesignerInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.KeyInterface.VariableType.Name);
+	_interface.WillImplement(specification.KeyInterface);
+		
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+	{
+		IVariable variable;
+		if(specificationProperty.IsList)
+			variable = new TemplateVariable(specificationProperty.ListOf, specificationProperty.Name);
+		else
+			variable = new TemplateVariable(specificationProperty.PropertyType, specificationProperty.Name);
+			
+		_interface.Add(variable, true, false);
+	}
+
+	return _interface;
+}
+
+IInterface GenerateModelInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.Interface.VariableType.Name);
+	_interface.IsPartial = true;
+
+	return _interface;
+}
+
+IInterface GenerateModelDesignerInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	return GenerateModelDesignerInterface(specification, _namespace, model, new List<ISpecificationProperty>());
+}
+
+IInterface GenerateModelDesignerInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model, IEnumerable<ISpecificationProperty> additionalProperties)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.Interface.VariableType.Name);
+	_interface.IsPartial = true;
+
+	if(model.Key != null)
+		_interface.WillImplement(new TemplateGenericInterface(_namespace, specification.ModelInterface.Name, new List<string>(){ model.KeyInterface.VariableType.Name }));
+	else
+		_interface.WillImplement(new TemplateInterface(_namespace, specification.ModelInterface.Name));
+		
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values.Concat(additionalProperties))
+	{
+		IVariable variable;
+		if(specificationProperty.IsList)
+			variable = new TemplateVariable(specificationProperty.ListOf, specificationProperty.Name);
+		else
+			variable = new TemplateVariable(specificationProperty.PropertyType, specificationProperty.Name);
+
+		_interface.Add(variable, true, true);
+	}
+	
+	return _interface;
+}
+
+IInterface GenerateModelFactoryInterface(ISpecification specification, INamespace _namespace)
+{
+	IInterface _interface = specification.ModelFactoryInterface;
+	
+	foreach(ISpecificationModel model in specification.Models.Values)
+	{
+		_interface.Add(GenerateModelFunction(model));
+
+		if(model.Key != null)
+			_interface.Add(GenerateModelKeyFunction(model));
+	
+		if(model.HasRepositoryAndService)
+		{
+			_interface.Add(GenerateModelSearchFunction(model));
+			_interface.Add(GenerateModelSearchMultipleFunction(model));
+		}
+	}
+	
+	return _interface;
+}
+
+IInterface GenerateSearchInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.SearchInterface.VariableType.Name);
+	_interface.WillImplement(specification.SingleSearchInterface);
+
+	return _interface;
+}
+
+IInterface GenerateSearchMultipleInterface(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IInterface _interface = new TemplateInterface(_namespace, model.SearchMultipleInterface.VariableType.Name);
+	_interface.WillImplement(specification.MultipleSearchInterface);
+	
+	return _interface;
+}
+#>
+<#+
+IFunction GenerateModelFunction(ISpecificationModel model)
+{	
+	IList<IVariable> parameters = new List<IVariable>();
+
+	if(model.Key != null)
+		parameters.Add(model.KeyInterface);
+
+	return new TemplateFunction(Privacy.Public, model.Interface.VariableType, "Generate" + model.Variable.VariableType.Name, parameters);
+}
+
+IFunction GenerateModelKeyFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	
+	if(model.Key != null)
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			parameters.Add(new TemplateVariable(specificationProperty.PropertyType, specificationProperty.InstanceName));
+
+	return new TemplateFunction(Privacy.Public, model.KeyInterface.VariableType, "Generate" + model.KeyVariable.VariableType.Name, parameters);
+}
+
+IFunction GenerateModelSearchFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+
+	return new TemplateFunction(Privacy.Public, model.SearchInterface.VariableType, "Generate" + model.SearchVariable.VariableType.Name, parameters);
+}
+
+IFunction GenerateModelSearchMultipleFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+
+	return new TemplateFunction(Privacy.Public, model.SearchMultipleInterface.VariableType, "Generate" + model.SearchMultipleVariable.VariableType.Name, parameters);
+}
+#>

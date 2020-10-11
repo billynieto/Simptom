@@ -1,0 +1,7 @@
+﻿CREATE TABLE [dbo].[Activities]
+(
+	[ID] UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT newid(), 
+    [Name] NVARCHAR(50) NOT NULL, 
+    [CategoryID] UNIQUEIDENTIFIER NOT NULL, 
+    CONSTRAINT [AK_Activities_Name] UNIQUE ([Name])
+)

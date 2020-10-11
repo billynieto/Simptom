@@ -1,0 +1,134 @@
+﻿<#@ assembly Name="System.Core" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#+
+IList<IFile> filesToGenerate = new List<IFile>();
+
+void GenerateFiles(string folderPath, IList<IFile> filesToGenerate)
+{
+	foreach(IFile file in filesToGenerate)
+	{
+		this.GenerationEnvironment.Remove(0, this.GenerationEnvironment.Length);
+		
+		foreach(ILine line in file.ToLines())
+			WriteLine(line.Code);
+
+		File.WriteAllText(Path.Combine(folderPath, file.Name + "." + file.Extension), this.GenerationEnvironment.ToString()); 
+
+		this.GenerationEnvironment.Remove(0, this.GenerationEnvironment.Length);
+	}
+}
+
+IEnumerable<IRelationship> GetDistinct(IEnumerable<IRelationship> relationships)
+{
+	return relationships
+		.GroupBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name)
+		.Select(_group => _group.First());
+}
+
+string GetMaxValue(ISpecificationProperty specificationProperty)
+{
+	if(specificationProperty.PropertyType == "bool" || specificationProperty.PropertyType == "bool?")		
+		return TemplatesHelper.FormatBool(true);
+	if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")		
+		return TemplatesHelper.FormatDateTime(specificationProperty.Maximum == null ? DateTime.MaxValue : (DateTime)specificationProperty.Maximum);
+	else if(specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?")
+		return TemplatesHelper.FormatDouble(specificationProperty.Maximum == null ? double.MaxValue : (double)specificationProperty.Maximum);
+	else if(specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+		return TemplatesHelper.FormatInt(specificationProperty.Maximum == null ? int.MaxValue : (int)specificationProperty.Maximum);
+	else if(specificationProperty.PropertyType == "string")
+		return TemplatesHelper.FormatString(TemplatesHelper.RandomStringMaxedOut((int)specificationProperty.Maximum));
+
+	return null;
+}
+
+string GetMaxValuePlusOne(ISpecificationProperty specificationProperty)
+{
+	if(specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?")
+	{
+		double _dx = .000000000001;
+		double _original = specificationProperty.Maximum == null ? double.MaxValue : (double)specificationProperty.Maximum;
+		double _value = _original;
+
+		while(TemplatesHelper.FormatDouble(_original) == TemplatesHelper.FormatDouble(_value))
+		{
+			_dx = _dx * 10;
+			_value = _original + _dx;
+		}
+
+		return TemplatesHelper.FormatDouble(_value);
+	}
+
+	if(specificationProperty.PropertyType == "bool" || specificationProperty.PropertyType == "bool?")		
+		return TemplatesHelper.FormatBool(TemplatesHelper.RandomBool());
+	if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")		
+		return TemplatesHelper.FormatDateTime((specificationProperty.Maximum == null ? DateTime.MaxValue : (DateTime)specificationProperty.Maximum).AddSeconds(1));
+	else if(specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+		return TemplatesHelper.FormatInt(specificationProperty.Maximum == null ? int.MaxValue : (int)specificationProperty.Maximum + 1);
+	else if(specificationProperty.PropertyType == "string")
+		return TemplatesHelper.FormatString(TemplatesHelper.RandomStringMaxedOut((int)specificationProperty.Maximum + 1));
+
+	return null;
+}
+
+string GetMaxValueWithWhiteSpace(ISpecificationProperty specificationProperty)
+{
+	return TemplatesHelper.FormatString(TemplatesHelper.WhiteSpace + TemplatesHelper.RandomStringMaxedOut((int)specificationProperty.Maximum) + TemplatesHelper.WhiteSpace);
+}
+
+string GetMinValue(ISpecificationProperty specificationProperty)
+{
+	if(specificationProperty.PropertyType == "bool" || specificationProperty.PropertyType == "bool?")		
+		return TemplatesHelper.FormatBool(false);
+	if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")		
+		return TemplatesHelper.FormatDateTime(specificationProperty.Minimum == null ? DateTime.MinValue : (DateTime)specificationProperty.Minimum);
+	else if(specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?")
+		return TemplatesHelper.FormatDouble(specificationProperty.Minimum == null ? double.MinValue : (double)specificationProperty.Minimum);
+	else if(specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+		return TemplatesHelper.FormatInt(specificationProperty.Minimum == null ? int.MinValue : (int)specificationProperty.Minimum);
+	else if(specificationProperty.PropertyType == "string")
+		return TemplatesHelper.FormatString(TemplatesHelper.RandomStringMaxedOut(specificationProperty.Minimum == null ? 0 : (int)specificationProperty.Minimum));
+
+	return null;
+}
+
+string GetMinValueMinusOne(ISpecificationProperty specificationProperty)
+{
+	if(specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?")
+	{
+		double _dx = .000000000001;
+		double _original = specificationProperty.Minimum == null ? double.MinValue : (double)specificationProperty.Minimum;
+		double _value = _original;
+
+		while(TemplatesHelper.FormatDouble(_original) == TemplatesHelper.FormatDouble(_value))
+		{
+			_dx = _dx * 10;
+			_value = _original - _dx;
+		}
+
+		return TemplatesHelper.FormatDouble(_value);
+	}
+
+	if(specificationProperty.PropertyType == "bool" || specificationProperty.PropertyType == "bool?")		
+		return TemplatesHelper.FormatBool(TemplatesHelper.RandomBool());
+	if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?")		
+		return TemplatesHelper.FormatDateTime((specificationProperty.Minimum == null ? DateTime.MinValue : (DateTime)specificationProperty.Minimum).AddSeconds(-1));
+	else if(specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+		return TemplatesHelper.FormatInt(specificationProperty.Minimum == null ? int.MinValue : (int)specificationProperty.Minimum - 1);
+	else if(specificationProperty.PropertyType == "string")
+		return TemplatesHelper.FormatString(TemplatesHelper.RandomStringMaxedOut((int)specificationProperty.Minimum - 1));
+
+	return null;
+}
+#>

@@ -1,0 +1,8 @@
+﻿CREATE TABLE [dbo].[Participations]
+(
+	[ID] UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT newid(),
+    [ActivityID] UNIQUEIDENTIFIER NOT NULL, 
+    [PerformedOn] DATETIME2 NOT NULL, 
+    [Severity] FLOAT NOT NULL,
+    [UserID] UNIQUEIDENTIFIER NOT NULL
+)

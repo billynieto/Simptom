@@ -1,0 +1,7 @@
+﻿CREATE TABLE [dbo].[Symptoms]
+(
+	[ID] UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT newid(),
+    [Name] NVARCHAR(50) NOT NULL, 
+    [CategoryID] UNIQUEIDENTIFIER NOT NULL, 
+    CONSTRAINT [AK_Symptoms_Name] UNIQUE ([Name])
+)

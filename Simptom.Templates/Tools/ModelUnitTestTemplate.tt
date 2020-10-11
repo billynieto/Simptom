@@ -1,0 +1,671 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder coreModelsDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.UnitTestProject.Namespace.Name)
+	.Append(@"\Core\Models");
+DirectoryInfo coreModelsDirectory = new DirectoryInfo(coreModelsDirectoryPath.ToString());
+if(!coreModelsDirectory.Exists)
+	coreModelsDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	if(model.ReadOnly)
+		continue;
+
+	filesToGenerate.Add(GenerateCoreModelUnitTestFile(specification, model));
+}
+
+GenerateFiles(coreModelsDirectory.FullName, filesToGenerate);
+
+filesToGenerate.Clear();
+
+StringBuilder modelsDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.UnitTestProject.Namespace.Name)
+	.Append(@"\Models");
+DirectoryInfo modelsDirectory = new DirectoryInfo(modelsDirectoryPath.ToString());
+if(!modelsDirectory.Exists)
+	modelsDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	if(model.ReadOnly)
+		continue;
+
+	filesToGenerate.Add(GenerateModelUnitTestFile(specification, model));
+}
+
+GenerateFiles(modelsDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateCoreModelUnitTestFile(ISpecification specification, ISpecificationModel model)
+{
+	string testClassName = model.Interface.VariableType.Name + "Test";
+
+	IFile file = new TemplateFile(specification.Settings.UnitTestCoreModelsNamespace, testClassName, "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.MicrosoftVisualStudioTestToolsUnitTestingNamespace);
+	file.Uses(TestingHelper.MoqNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	
+	file.Components.Enqueue(GenerateCoreModelUnitTestClass(specification, file.Namespace, model, testClassName));
+
+	return file;
+}
+
+IFile GenerateModelUnitTestFile(ISpecification specification, ISpecificationModel model)
+{
+	string className = model.Variable.VariableType.Name + "Test";
+
+	IFile file = new TemplateFile(specification.Settings.UnitTestCoreModelsNamespace, className, "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.MicrosoftVisualStudioTestToolsUnitTestingNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.TestFactoriesNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.ModelsNamespace);
+	
+	file.Components.Enqueue(GenerateModelUnitTestClass(specification, file.Namespace, model, className));
+
+	return file;
+}
+#>
+<#+
+IClass GenerateCoreModelUnitTestClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, string testClassName)
+{
+	IClass _class = new TemplateClass(_namespace, testClassName);
+	_class.IsAbstract = true;
+	
+	_class.Add(specification.ModelFactoryVariable, false, false);
+	_class.Add(model.Interface, false, false);
+	_class.Add(new TemplateVariable("Mock<" + model.KeyInterface.VariableType.Name + ">", "key"), false, false);
+	_class.Add(specification.TestContextVariable, true, true);
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		_class.Add(new TemplateVariable("Mock<" + relatedModel.KeyInterface.VariableType.Name + ">", relatedModel.KeyInterface.InstanceName), false, false);
+		_class.Add(new TemplateVariable("Mock<" + relatedModel.Interface.VariableType.Name + ">", relatedModel.Interface.InstanceName), false, false);
+	}
+
+	_class.Add(CoreTestInitializeFunction(specification, model));
+	_class.Add(CoreTestCleanupFunction(model));
+	
+	_class.NewRegion("Equals");
+		
+	_class.Add(Equals_Test_Returns_False_When_Key_Does_Not_Match_Function(specification, model));
+	_class.Add(Equals_Test_Returns_True_When_Key_Matches_Function(specification, model));
+
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+	{
+		_class.NewRegion(specificationProperty.Name);
+		
+		if(specificationProperty.Relationship != null)
+		{
+			if(specificationProperty.IsList)
+			{
+				_class.Add(Validate_Test_Contains_Empty_List_Of_Referenced_Models_Function(specification, model, specificationProperty));
+				_class.Add(Validate_Test_List_Of_Referenced_Models_Contains_Null_Item_Function(specification, model, specificationProperty));
+			}
+
+			_class.Add(Validate_Test_Is_Null_Function(specification, model, specificationProperty));
+			_class.Add(Validate_Test_Is_Valid_Function(specification, model, specificationProperty));
+		}
+		else if(specificationProperty.PropertyType == "bool?")
+		{
+			_class.Add(Validate_Test_Is_Null_Function(specification, model, specificationProperty));
+		}
+		else if(specificationProperty.PropertyType == "DateTime" || specificationProperty.PropertyType == "DateTime?"
+			|| specificationProperty.PropertyType == "decimal" || specificationProperty.PropertyType == "decimal?"
+			|| specificationProperty.PropertyType == "double" || specificationProperty.PropertyType == "double?"
+			|| specificationProperty.PropertyType == "int" || specificationProperty.PropertyType == "int?")
+		{
+			if(specificationProperty.PropertyType.Contains("?"))
+				_class.Add(Validate_Test_Is_Null_Function(specification, model, specificationProperty));
+
+			if(specificationProperty.Minimum != null)
+				_class.Add(Validate_Test_Minimum_Minus_One_Function(specification, model, specificationProperty));
+
+			_class.Add(Validate_Test_Minimum_Function(specification, model, specificationProperty));
+			_class.Add(Validate_Test_Maximum_Function(specification, model, specificationProperty));
+
+			if(specificationProperty.Maximum != null)
+				_class.Add(Validate_Test_Maximum_Plus_One_Function(specification, model, specificationProperty));
+		}
+		else if(specificationProperty.PropertyType == "string")
+		{
+			_class.Add(Validate_Test_Is_Null_Function(specification, model, specificationProperty));
+
+			if(specificationProperty.Required)
+				_class.Add(Validate_Test_Minimum_Minus_One_Function(specification, model, specificationProperty));
+
+			_class.Add(Validate_Test_WhiteSpace_Only_Function(specification, model, specificationProperty));
+			_class.Add(Validate_Test_Minimum_Function(specification, model, specificationProperty));
+			_class.Add(Validate_Test_Maximum_Function(specification, model, specificationProperty));
+			_class.Add(Validate_Test_Maximum_With_WhiteSpace_Function(specification, model, specificationProperty));
+			_class.Add(Validate_Test_Maximum_Plus_One_Function(specification, model, specificationProperty));
+		}
+	}
+	
+	return _class;
+}
+
+IClass GenerateModelUnitTestClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, string className)
+{
+	IClass _class = new TemplateClass(_namespace, className);
+	_class.Tag("[TestClass]");
+	_class.Inherits(new TemplateClass(specification.Settings.FrameworkModelsNamespace, model.Interface.VariableType.Name + "Test"));
+	
+	_class.Add(TestCleanupFunction(specification, model));
+	_class.Add(TestInitializeFunction(specification, model));
+	
+	return _class;
+}
+#>
+<#+
+IFunction CoreTestCleanupFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "TestCleanup");
+	function.Tag("[TestCleanup]");
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add("this." + relatedModel.Interface.InstanceName + " = null;");
+		function.Add("this." + relatedModel.KeyInterface.InstanceName + " = null;");
+	}
+	
+	if(model.RelationshipsRequiredForUnitTesting.Count > 0)
+		function.Add();
+
+	function.Add("this." + model.Interface.InstanceName + " = null;");
+	function.Add("this.key = null;");
+
+	return function;
+}
+
+IFunction CoreTestInitializeFunction(ISpecification specification, ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "TestInitialize");
+	function.Tag("[TestInitialize]");
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add("this." + relatedModel.Interface.InstanceName + " = " + TestingHelper.NewMockOf(relatedModel.Interface.VariableType) + ";");
+		function.Add("this." + relatedModel.Interface.InstanceName + ".SetupAllProperties();");
+		function.Add("this." + relatedModel.Interface.InstanceName + ".Setup(_model => _model.Key).Returns(() => { return this." + relatedModel.KeyInterface.InstanceName + ".Object; });");
+		function.Add("this." + relatedModel.KeyInterface.InstanceName + " = " + TestingHelper.NewMockOf(relatedModel.KeyInterface.VariableType) + ";");
+		foreach(ISpecificationProperty specificationProperty in relatedModel.Key.SpecificationProperties)
+			function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Model, relatedModel.KeyInterface.InstanceName, specificationProperty, "_key"));
+	}
+
+	if(model.RelationshipsRequiredForUnitTesting.Count > 0)
+		function.Add();
+
+	if(model.Key != null)
+	{
+		function.Add("this.key = new Mock<" + model.KeyInterface.VariableType.Name + ">();");
+
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Model, "key", specificationProperty, "_key"));
+	}
+	
+	return function;
+}
+
+IFunction Equals_Test_Returns_False_When_Key_Does_Not_Match_Function(ISpecification specification, ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Equals_" + model.KeyVariable.VariableType.Name + "_Test_Returns_False_When_Key_Does_Not_Match");
+	function.Tag("[TestMethod]");
+	
+	StringBuilder randomKeyParameters = new StringBuilder();
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+	{
+		if(randomKeyParameters.Length > 0)
+			randomKeyParameters.Append(", ");
+
+		randomKeyParameters.Append(TestingHelper.RandomValue(specification, specificationProperty, true, false));
+	}
+	
+	function.Add("//Arrange");
+	function.Add("bool actual;");
+	function.Add("bool expected = false;");
+	function.Add(model.KeyInterface.VariableType.Name + " injected = this.modelFactory.Generate" + model.KeyVariable.VariableType.Name + "(" + randomKeyParameters.ToString() + ");");
+	
+	randomKeyParameters.Clear();
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+	{
+		if(randomKeyParameters.Length > 0)
+			randomKeyParameters.Append(", ");
+
+		randomKeyParameters.Append(TestingHelper.RandomValue(specification, specificationProperty, true, false));
+	}
+
+	function.Add(model.KeyInterface.VariableType.Name + " worked = this.modelFactory.Generate" + model.KeyVariable.VariableType.Name + "(" + randomKeyParameters.ToString() + ");");
+	function.Add();
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add("this." + relatedModel.KeyInterface.InstanceName + ".Setup(_" + relatedModel.KeyInterface.InstanceName + " => _" + relatedModel.KeyInterface.InstanceName + ".Equals(It.IsAny<" + relatedModel.KeyInterface.VariableType.Name + ">())).Returns(false);");
+		function.Add();
+	}
+
+	function.Add("//Act");
+	function.Add("actual = worked.Equals(injected);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.AreEqual(actual, expected);");
+
+	return function;
+}
+
+IFunction Equals_Test_Returns_True_When_Key_Matches_Function(ISpecification specification, ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Equals_" + model.KeyVariable.VariableType.Name + "_Test_Returns_True_When_Key_Matches");
+	function.Tag("[TestMethod]");
+	
+	StringBuilder randomKeyParameters = new StringBuilder();
+	foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+	{
+		if(randomKeyParameters.Length > 0)
+			randomKeyParameters.Append(", ");
+
+		randomKeyParameters.Append(TestingHelper.RandomValue(specification, specificationProperty, true, false));
+	}
+	
+	function.Add("//Arrange");
+	function.Add("bool actual;");
+	function.Add("bool expected = true;");
+	function.Add(model.KeyInterface.VariableType.Name + " injected = this.modelFactory.Generate" + model.KeyVariable.VariableType.Name + "(" + randomKeyParameters.ToString() + ");");
+	function.Add();
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add("this." + relatedModel.KeyInterface.InstanceName + ".Setup(_" + relatedModel.KeyInterface.InstanceName + " => _" + relatedModel.KeyInterface.InstanceName + ".Equals(It.IsAny<" + relatedModel.KeyInterface.VariableType.Name + ">())).Returns(true);");
+		function.Add();
+	}
+
+	function.Add("//Act");
+	function.Add("actual = injected.Equals(injected);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.AreEqual(actual, expected);");
+
+	return function;
+}
+
+IFunction TestCleanupFunction(ISpecification specification, ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "TestCleanup");
+	function.Tag("[TestCleanup]");
+
+	function.Add("base.TestCleanup();");
+	function.Add();
+	function.Add("this." + specification.ModelFactoryVariable.InstanceName + " = null;");
+	
+	return function;
+}
+
+IFunction TestInitializeFunction(ISpecification specification, ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "TestInitialize");
+	function.Tag("[TestInitialize]");
+	
+	function.Add("this." + specification.ModelFactoryVariable.InstanceName + " = new ValidModelFactory();");
+	function.Add();
+	function.Add("base.TestInitialize();");
+	
+	return function;
+}
+
+IFunction Validate_Test_Contains_Empty_List_Of_Referenced_Models_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Is_Empty");
+	function.Tag("[TestMethod]");
+
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add();
+	function.Add("actual." + specificationProperty.Name + ".Clear();");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Is_Null_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	if(specificationProperty.Required || specificationProperty.IsList)
+		function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add();
+	function.Add("actual." + specificationProperty.Name + " = null;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Is_Valid_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	ISpecificationModel relatedModel = specificationProperty.Relationship.RelatedModel;
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Is_Valid");
+	function.Tag("[TestMethod]");
+	
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add(TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " = " + TestingHelper.NewMockOf(relatedModel) + ";");
+	function.Add();
+
+	if(specificationProperty.IsList)
+		function.Add("actual." + specificationProperty.Name + ".Add(" + relatedModel.Interface.InstanceName + ".Object);");
+	else
+		function.Add("actual." + specificationProperty.Name + " = " + relatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Maximum_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	string prefix = "actual." + specificationProperty.Name + " = ";
+	string randomValue = GetMaxValue(specificationProperty);
+
+	if(string.IsNullOrWhiteSpace(randomValue))
+	{
+		randomValue = "TODO";
+		prefix = "//" + prefix;
+	}
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Maximum");
+	function.Tag("[TestMethod]");
+	
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add();
+
+	if(specificationProperty.PropertyType == "string")
+		function.Add(TemplatesHelper.ColumnCounter(prefix + " ", randomValue));
+
+	function.Add(prefix + randomValue + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Maximum_Plus_One_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	string prefix = "actual." + specificationProperty.Name + " = ";
+	string randomValue = GetMaxValuePlusOne(specificationProperty);
+
+	if(string.IsNullOrWhiteSpace(randomValue))
+	{
+		randomValue = "TODO";
+		prefix = "//" + prefix;
+	}
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Maximum_Plus_One");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentException))]");
+	
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+			
+	function.Add();
+
+	if(specificationProperty.PropertyType == "string")
+		function.Add(TemplatesHelper.ColumnCounter(prefix + " ", randomValue));
+
+	function.Add(prefix + randomValue + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Maximum_With_WhiteSpace_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	string prefix = "actual." + specificationProperty.Name + " = ";
+	string randomValue = GetMaxValueWithWhiteSpace(specificationProperty);
+
+	if(string.IsNullOrWhiteSpace(randomValue))
+	{
+		randomValue = "TODO";
+		prefix = "//" + prefix;
+	}
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Maximum_With_WhiteSpace");
+	function.Tag("[TestMethod]");
+	
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+			
+	function.Add();
+
+	if(specificationProperty.PropertyType == "string")
+		function.Add(TemplatesHelper.ColumnCounter(prefix + " " + TemplatesHelper.WhiteSpace, randomValue));
+
+	function.Add(prefix + randomValue + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Minimum_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	string prefix = "actual." + specificationProperty.Name + " = ";
+	string randomValue = GetMinValue(specificationProperty);
+
+	if(string.IsNullOrWhiteSpace(randomValue))
+	{
+		randomValue = "TODO";
+		prefix = "//" + prefix;
+	}
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Minimum");
+	function.Tag("[TestMethod]");
+	
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+			
+	function.Add();
+
+	if(specificationProperty.PropertyType == "string" && randomValue != "string.Empty")
+		function.Add(TemplatesHelper.ColumnCounter(prefix + " ", randomValue));
+
+	function.Add(prefix + randomValue + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_Minimum_Minus_One_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	string prefix = "actual." + specificationProperty.Name + " = ";
+	string randomValue = GetMinValueMinusOne(specificationProperty);
+
+	if(string.IsNullOrWhiteSpace(randomValue))
+	{
+		randomValue = "TODO";
+		prefix = "//" + prefix;
+	}
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Minimum_Minus_One");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentException))]");
+	
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+			
+	function.Add();
+	
+	if(specificationProperty.PropertyType == "string" && randomValue != "string.Empty")
+		function.Add(TemplatesHelper.ColumnCounter(prefix + " ", randomValue));
+
+	function.Add(prefix + randomValue + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_List_Of_Referenced_Models_Contains_Null_Item_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_Contains_Null_" + specificationProperty.Relationship.RelatedModel.Variable.VariableType.Name);
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			 
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add();
+	function.Add("actual." + specificationProperty.Name + ".Add(null);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Validate_Test_WhiteSpace_Only_Function(ISpecification specification, ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Validate_" + model.Variable.VariableType.Name + "_Test_" + specificationProperty.Name + "_WhiteSpace_Only");
+	function.Tag("[TestMethod]");
+	if(specificationProperty.Required)
+		function.Tag("[ExpectedException(typeof(ArgumentException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual = this." + specification.ModelFactoryVariable.InstanceName + ".Generate" + model.Variable.VariableType.Name + "(this.key.Object);");
+	
+	foreach(ISpecificationProperty otherSpecificationProperty in model.SpecificationProperties.Values)
+		if(otherSpecificationProperty.Name != specificationProperty.Name && otherSpecificationProperty.Relationship != null && otherSpecificationProperty.Required)
+			function.Add("actual." + otherSpecificationProperty.Name + " = this." + otherSpecificationProperty.Relationship.RelatedModel.Interface.InstanceName + ".Object;");
+
+	function.Add();
+	function.Add("actual." + specificationProperty.Name + " = " + TemplatesHelper.FormatString(TemplatesHelper.WhiteSpace) + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual.Validate();");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+#>

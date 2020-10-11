@@ -1,0 +1,2010 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder coreRepositoriesDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.UnitTestProject.Namespace.Name)
+	.Append(@"\Core\Repositories");
+DirectoryInfo coreRepositoriesDirectory = new DirectoryInfo(coreRepositoriesDirectoryPath.ToString());
+if(!coreRepositoriesDirectory.Exists)
+	coreRepositoriesDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	if(!model.HasRepositoryAndService)
+		continue;
+
+	filesToGenerate.Add(GenerateCoreRepositoryUnitTestFile(specification, model));
+}
+
+GenerateFiles(coreRepositoriesDirectory.FullName, filesToGenerate);
+
+filesToGenerate.Clear();
+
+StringBuilder repositoriesDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.UnitTestProject.Namespace.Name)
+	.Append(@"\Repositories");
+DirectoryInfo repositoriesDirectory = new DirectoryInfo(repositoriesDirectoryPath.ToString());
+if(!repositoriesDirectory.Exists)
+	repositoriesDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	if(!model.HasRepositoryAndService)
+		continue;
+
+	string repositoryTestName = model.RepositoryVariable.VariableType.Name + "Test";
+
+	FileInfo repositoryFileInfo = new FileInfo(repositoriesDirectory.FullName + @"\" + repositoryTestName + ".cs");
+	if(repositoryFileInfo.Exists)
+		continue;
+
+	filesToGenerate.Add(GenerateRepositoryUnitTestFile(specification, model, repositoryTestName));
+}
+
+GenerateFiles(repositoriesDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateCoreRepositoryUnitTestFile(ISpecification specification, ISpecificationModel model)
+{
+	string repositoryTestName = model.RepositoryInterface.VariableType.Name + "Test";
+	
+	IFile file = new TemplateFile(specification.Settings.UnitTestCoreRepositoriesNamespace, repositoryTestName, "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.Uses(TemplateNamespace.System_Data);
+	file.Uses(TemplateNamespace.System_Linq);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.MicrosoftVisualStudioTestToolsUnitTestingNamespace);
+	file.Uses(TestingHelper.MoqNamespace);
+	file.Uses(TestingHelper.RepositoryNamespace);
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.FrameworkRepositoriesNamespace);
+	
+	file.Components.Enqueue(GenerateCoreRepositoryUnitTestClass(specification, file.Namespace, model, repositoryTestName));
+
+	return file;
+}
+
+IFile GenerateRepositoryUnitTestFile(ISpecification specification, ISpecificationModel model, string repositoryTestName)
+{
+	IFile file = new TemplateFile(specification.Settings.UnitTestRepositoriesNamespace, repositoryTestName, "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Data);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.MicrosoftVisualStudioTestToolsUnitTestingNamespace);
+	file.Uses(TestingHelper.MoqNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.RepositoriesNamespace);
+	file.Uses(specification.Settings.UnitTestCoreRepositoriesNamespace);
+	
+	file.Components.Enqueue(GenerateRepositoryUnitTestClass(specification, file.Namespace, model, repositoryTestName));
+
+	return file;
+}
+#>
+<#+
+IClass GenerateCoreRepositoryUnitTestClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, string repositoryTestName)
+{
+	IClass _class = new TemplateClass(_namespace, repositoryTestName);
+	_class.IsAbstract = true;
+	
+	_class.Add(new TemplateVariable("Mock<" + model.KeyInterface.VariableType.Name + ">", "key"), false, false);
+	_class.Add(new TemplateVariable("IList<Mock<" + model.KeyInterface.VariableType.Name + ">>", "keys"), false, false);
+	_class.Add(new TemplateVariable("Mock<IModelFactory>", "modelFactory"), false, false);
+	_class.Add(new TemplateVariable(TestingHelper.MockOf(model), model.Interface.InstanceName), false, false);
+	_class.Add(new TemplateVariable("IList<" + TestingHelper.MockOf(model) + ">", model.Interface.ListInstanceName), false, false);
+	_class.Add(new TemplateVariable(model.RepositoryInterface.VariableType.Name, "repository"), false, false);
+	_class.Add(new TemplateVariable("Mock<" + model.SearchInterface.VariableType.Name + ">", "search"), false, false);
+	_class.Add(new TemplateVariable("Mock<" + model.SearchMultipleInterface.VariableType.Name + ">", "searchMultiple"), false, false);
+	_class.Add(new TemplateVariable("Mock<IDbTransaction>", "transaction"), false, false);
+	_class.Add(specification.TestContextVariable, true, true);
+	
+	if(model.Recursive.Count > 0)
+	{
+		if(model.Key != null)
+			_class.Add(new TemplateVariable(TestingHelper.MockOf(model.KeyInterface.VariableType), "childKey"), false, false);
+		
+		_class.Add(new TemplateVariable(TestingHelper.MockOf(model), "child"), false, false);
+	}
+		 
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		_class.Add(new TemplateVariable("Mock<" + relatedModel.KeyInterface.VariableType.Name + ">", relatedModel.KeyInterface.InstanceName), false, false);
+		_class.Add(new TemplateVariable(TestingHelper.MockOf(relatedModel.Interface.VariableType), relatedModel.Interface.InstanceName), false, false);
+		_class.Add(new TemplateVariable("IList<" + TestingHelper.MockOf(relatedModel.Interface.VariableType) + ">", relatedModel.Interface.ListInstanceName), false, false);
+	}
+
+	_class.Add(CoreTestInitializeFunction(specification, model));
+	_class.NewRegion();
+	_class.Add(CoreTestCleanupFunction(model));
+	_class.NewRegion();
+	_class.Add(CoreAddRowFunction(model));
+	_class.Add(CoreAddRowsFunction(model));
+
+	_class.NewRegion("Delete");
+	
+	if(model.ReadOnly || !model.CanDelete)
+	{
+		_class.Add(Delete_Test_Throws_Error_Function(model));
+	}
+	else
+	{
+		_class.Add(Delete_Multiple_Test_Throws_Error_When_Any_Key_Is_Null_Function(model));
+		_class.Add(Delete_Test_Throws_Error_When_Key_Is_Null_Function(model));
+	}
+	
+	_class.NewRegion("Exists");
+	
+	_class.Add(Exists_Multiple_Test_Returns_Non_Null_List_When_Keys_Were_Not_Found_Function(model));
+	_class.Add(Exists_Multiple_Test_Returns_Empty_List_When_Keys_Were_Not_Found_Function(model));
+	_class.Add(Exists_Multiple_Test_Returns_List_Of_Keys_When_They_Were_Found_Function(model));
+	_class.Add(Exists_Test_Returns_False_When_Key_Was_Not_Found_Function(model));
+	_class.Add(Exists_Test_Returns_True_When_Key_Was_Found_Function(model));
+
+	_class.NewRegion("Insert");
+	
+	if(model.ReadOnly || !model.CanInsert)
+	{
+		_class.Add(Insert_Test_Throws_Error_Function(model));
+	}
+	else
+	{
+		_class.Add(Insert_Multiple_Test_Throws_Error_When_Any_Model_Is_Null_Function(model));
+		_class.Add(Insert_Multiple_Test_Throws_Error_When_Models_Is_Null_Function(model));
+		_class.Add(Insert_Test_Throws_Error_When_Model_Is_Null_Function(model));
+	
+		foreach(IAdmire admire in model.Admires)
+		{
+			if(admire.RelatedModel.HasRepositoryAndService)
+			{
+				_class.Add(Insert_Multiple_Test_Gets_Keys_For_Related_Model_Function(model, admire));
+				_class.Add(Insert_Test_Gets_Related_Models_Key_Function(model, admire));
+			}
+		}
+
+		foreach(IBiologicalChild biologicalChild in model.BiologicalChildren)
+		{
+			_class.Add(Insert_Multiple_Test_Does_Not_Get_Keys_For_Related_Model_Function(model, biologicalChild));
+			_class.Add(Insert_Test_Does_Not_Get_Related_Models_Keys_Function(model, biologicalChild));
+		}
+		
+		foreach(IBiologicalParent biologicalParent in model.BiologicalParents)
+		{
+			_class.Add(Insert_Multiple_Test_Gets_Keys_For_Related_Model_Function(model, biologicalParent));
+			_class.Add(Insert_Test_Gets_Related_Models_Key_Function(model, biologicalParent));
+		}
+	
+		foreach(IFriend friend in model.Friends)
+		{
+			_class.Add(Insert_Multiple_Test_Gets_Keys_For_Related_Model_Function(model, friend));
+			_class.Add(Insert_Test_Gets_Related_Models_Key_Function(model, friend));
+		}
+		
+		foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values.Where(_property => !_property.IsCalculated))
+		{
+			if(specificationProperty.Relationship == null)
+			{
+				if(specificationProperty.ReadOnly)
+				{
+					_class.Add(Insert_Multiple_Test_Does_Not_Get_Property_For_Every_Model_Function(model, specificationProperty));
+					_class.Add(Insert_Test_Does_Not_Get_Models_Property_Function(model, specificationProperty));
+				}
+				else
+				{
+					_class.Add(Insert_Multiple_Test_Gets_Property_For_Every_Model_Function(model, specificationProperty));
+					_class.Add(Insert_Test_Gets_Models_Property_Function(model, specificationProperty));
+				}
+			}
+		}
+	}
+	
+	_class.NewRegion("Select");
+	
+	_class.Add(Select_Test_Calls_Generate_On_ModelFactory_Function(model));
+
+	if(model.Key != null)
+		_class.Add(Select_Test_Calls_GenerateKey_On_ModelFactory_Function(model));
+
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+	{
+		if(!specificationProperty.IsKey)
+		{
+			if(specificationProperty.Relationship != null && !specificationProperty.IsList)
+			{
+				IRelationship relationship = specificationProperty.Relationship;
+				ISpecificationModel relatedModel = relationship.RelatedModel;
+				
+				if(!(relationship is IBiologicalParent) || (relationship is IBiologicalParent && relatedModel.HasRepositoryAndService))
+				{
+					//_class.Add(Select_Test_Calls_Generate_On_ModelFactory_For_Related_Model_Function(model, specificationProperty.Relationship));
+
+					//if(relatedModel.Key != null)
+						//_class.Add(Select_Test_Calls_Generate_On_ModelFactory_For_Related_Models_Key_Function(model, specificationProperty.Relationship));
+
+					//_class.Add(Select_Test_Sets_Related_Models_Properties_Function(model, specificationProperty.Relationship));
+				}
+			}
+			else
+			{
+				//_class.Add(Select_Test_Sets_Property_Function(model, specificationProperty));
+			}
+		}
+	}
+
+	_class.NewRegion("Select Single");
+	
+	if(model.Tier == Tier.Primary)
+	{
+		_class.Add(SelectSingle_Test_Calls_Generate_On_ModelFactory_Function(model));
+
+		if(model.Key != null)
+			_class.Add(SelectSingle_Test_Calls_GenerateKey_On_ModelFactory_Function(model));
+
+		_class.Add(SelectSingle_Test_Returns_Model_When_Model_Is_Found_Function(model));
+		_class.Add(SelectSingle_Test_Returns_Null_When_Model_Is_Not_Found_Function(model));
+	
+		foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+		{
+			if(specificationProperty.Relationship != null && !specificationProperty.IsList)
+			{
+				IRelationship relationship = specificationProperty.Relationship;
+				
+				_class.Add(SelectSingle_Test_Calls_Generate_On_ModelFactory_For_Related_Model_Function(model, relationship));
+
+				if(relationship.RelatedModel.Key != null)
+					_class.Add(SelectSingle_Test_Calls_Generate_On_ModelFactory_For_Related_Models_Key_Function(model, relationship));
+
+				_class.Add(SelectSingle_Test_Sets_Related_Models_Properties_Function(model, relationship));
+			}
+			else
+			{
+				_class.Add(SelectSingle_Test_Sets_Property_Function(model, specificationProperty));
+			}
+		}
+
+		if(model.Key != null)
+		{
+			foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			{
+				if(specificationProperty.Relationship != null && !specificationProperty.IsList)
+				{
+					_class.Add(SelectSingle_Test_Calls_Generate_On_ModelFactory_For_Related_Model_Function(model, specificationProperty.Relationship));
+				}
+				else
+				{
+				}
+			}
+		}
+	}
+	else
+	{
+		_class.Add(SelectSingle_Test_Throws_Error_Function(model));
+	}
+
+	_class.NewRegion("Update");
+	
+	if(model.ReadOnly || !model.CanUpdate)
+	{
+		_class.Add(Update_Test_Throws_Error_Function(model));
+	}
+	else
+	{
+		_class.Add(Update_Multiple_Test_Gets_Key_Function(model));
+		_class.Add(Update_Multiple_Test_Throws_Error_When_Any_Model_Is_Null_Function(model));
+		_class.Add(Update_Multiple_Test_Throws_Error_When_Models_Is_Null_Function(model));
+		_class.Add(Update_Test_Gets_Models_Key_Function(model));
+		_class.Add(Update_Test_Throws_Error_When_Model_Is_Null_Function(model));
+	
+		foreach(IAdmire admire in model.Admires)
+		{
+			if(admire.ReferencingProperty.IsList || admire.ReferencingProperty.ReadOnly)
+			{
+				_class.Add(Update_Multiple_Test_Does_Not_Get_Key_For_Related_Model_Function(model, admire));
+				_class.Add(Update_Test_Does_Not_Get_Related_Models_Key_Function(model, admire));
+			}
+			else
+			{
+				_class.Add(Update_Multiple_Test_Gets_Key_For_Related_Model_Function(model, admire));
+				_class.Add(Update_Test_Gets_Related_Models_Key_Function(model, admire));
+			}
+		}
+
+		foreach(IBiologicalChild biologicalChild in model.BiologicalChildren)
+		{
+			_class.Add(Update_Multiple_Test_Does_Not_Get_Key_For_Related_Model_Function(model, biologicalChild));
+			_class.Add(Update_Test_Does_Not_Get_Related_Models_Key_Function(model, biologicalChild));
+		}
+		
+		foreach(IBiologicalParent biologicalParent in model.BiologicalParents)
+		{
+			_class.Add(Update_Multiple_Test_Gets_Key_For_Related_Model_Function(model, biologicalParent));
+			_class.Add(Update_Test_Gets_Related_Models_Key_Function(model, biologicalParent));
+		}
+
+		foreach(IFriend friend in model.Friends)
+		{
+			_class.Add(Update_Multiple_Test_Gets_Key_For_Related_Model_Function(model, friend));
+			_class.Add(Update_Test_Gets_Related_Models_Key_Function(model, friend));
+		}
+		
+		foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values.Where(_property => !_property.IsCalculated))
+		{
+			if(specificationProperty.Relationship == null)
+			{
+				if(specificationProperty.ReadOnly)
+				{
+					_class.Add(Update_Multiple_Test_Does_Not_Get_Property_For_Model_Function(model, specificationProperty));
+					_class.Add(Update_Test_Does_Not_Get_Models_Property_Function(model, specificationProperty));
+				}
+				else
+				{
+					_class.Add(Update_Multiple_Test_Gets_Property_For_Model_Function(model, specificationProperty));
+					_class.Add(Update_Test_Gets_Models_Property_Function(model, specificationProperty));
+				}
+			}
+		}
+	}
+	
+	return _class;
+}
+
+IClass GenerateRepositoryUnitTestClass(ISpecification specification, INamespace _namespace, ISpecificationModel model, string repositoryTestName)
+{
+	IClass _class = new TemplateClass(_namespace, repositoryTestName);
+	_class.Tag("[TestClass]");
+	_class.Inherits(new TemplateClass(specification.Settings.FrameworkRepositoriesNamespace, model.RepositoryInterface.VariableType.Name + "Test"));
+	
+	_class.Add(specification.DataSetVariable, false, false);
+
+	_class.Add(TestInitializeFunction(model));
+	_class.NewRegion();
+	_class.Add(TestCleanupFunction());
+	_class.NewRegion();
+	_class.Add(AddRowFunction(model));
+	
+	return _class;
+}
+#>
+<#+
+IFunction AddRowFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "AddRow", model.Parameter);
+	function.Add("DataRow row = this.dataSet.Tables[0].NewRow();");
+	function.Add();
+
+	if(model.Key != null)
+	{
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			function.Add("row[" + TemplatesHelper.FormatString(specificationProperty.Name) + "] = " + model.Interface.InstanceName + ".Key." + specificationProperty.Name + ";");
+
+		function.Add();
+	}
+
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+	{
+		if(!specificationProperty.IsList)
+		{
+			if(specificationProperty.Relationship != null)
+			{
+				if(specificationProperty.Relationship is IRecursive)
+				{
+				}
+				else
+				{
+					IRelationship relationship = specificationProperty.Relationship;
+					ISpecificationModel relatedModel = relationship.RelatedModel;
+					
+					if(relatedModel.Key != null)
+						foreach(ISpecificationProperty keySpecificationProperty in relatedModel.Key.SpecificationProperties)
+							function.Add("row[" + TemplatesHelper.FormatString(specificationProperty.Name + keySpecificationProperty.Name) + "] = " + model.Interface.InstanceName + "." + specificationProperty.Name + ".Key." + keySpecificationProperty.Name + ";");
+							
+					foreach(ISpecificationProperty relatedSpecificationProperty in relatedModel.SpecificationProperties.Values.OrderBy(_sp => _sp.Name))
+						if(relatedSpecificationProperty.Relationship == null)
+							function.Add("row[" + TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + relatedSpecificationProperty.Name) + "] = " + model.Interface.InstanceName + "." + specificationProperty.Name + "." + relatedSpecificationProperty.Name + ";");
+				}
+			}
+			else
+			{
+				function.Add("row[" + TemplatesHelper.FormatString(specificationProperty.Name) + "] = " + model.Interface.InstanceName + "." + specificationProperty.Name + ";");
+			}
+		}
+	}
+
+	function.Add();
+	function.Add("this.dataSet.Tables[0].Rows.Add(row);");
+
+	return function;
+}
+
+IFunction CoreAddRowFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "AddRow", model.Parameter);
+	function.Add("throw new NotImplementedException();");
+
+	return function;
+}
+
+IFunction CoreAddRowsFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	parameters.Add(new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName));
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "AddRows", parameters);
+
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\tAddRow(" + model.Interface.InstanceName + ");");
+
+	return function;
+}
+
+IFunction CoreTestCleanupFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "TestCleanup");
+	function.Tag("[TestCleanup]");
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add("this." + relatedModel.KeyInterface.InstanceName + " = null;");
+		function.Add("this." + relatedModel.Interface.InstanceName + " = null;");
+		function.Add("this." + relatedModel.Interface.ListInstanceName + " = null;");
+	}
+
+	function.Add("this.transaction = null;");
+
+	return function;
+}
+
+IFunction CoreTestInitializeFunction(ISpecification specification, ISpecificationModel model)
+{ 
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "TestInitialize");
+	function.Tag("[TestInitialize]");
+	 
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		if(relatedModel.Key != null)
+		{
+			function.Add("this." + relatedModel.KeyInterface.InstanceName + " = new Mock<" + relatedModel.KeyInterface.VariableType.Name + ">();");
+
+			foreach(ISpecificationProperty specificationProperty in relatedModel.Key.SpecificationProperties)
+				function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, relatedModel.Key, specificationProperty, "_key"));
+		}
+
+		function.Add("this." + relatedModel.Interface.InstanceName + " = new Mock<" + relatedModel.Interface.VariableType.Name + ">();");
+		function.Add("this." + relatedModel.Interface.InstanceName + ".SetupAllProperties();");
+				
+		if(relatedModel.Key != null)
+			function.Add("this." + relatedModel.Interface.InstanceName + ".Setup(_model => _model.Key).Returns(() => { return this." + relatedModel.KeyInterface.InstanceName + ".Object; });");
+			
+		foreach(ISpecificationProperty specificationProperty in relatedModel.SpecificationProperties.Values)
+		{
+			if(specificationProperty.Relationship != null)
+			{
+				ISpecificationModel deepRelatedModel = specificationProperty.Relationship.RelatedModel;
+				
+				if(model.RelationshipsRequiredForUnitTesting.Any(_relationship => _relationship.RelatedModel.Variable.VariableType.Name == deepRelatedModel.Variable.VariableType.Name))
+				{
+					function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, relatedModel, specificationProperty, "_" + relatedModel.Interface.InstanceName));
+				}
+				else
+				{
+					string value = null;
+					if(specificationProperty.IsList)
+						value = "new " + TemplatesHelper.ListOf(deepRelatedModel.Interface.VariableType) + "()";
+					else
+						value = "(" + deepRelatedModel.Interface.VariableType.Name + ")null";
+					
+					function.Add(TestingHelper.MockOutProperty(
+						relatedModel.Interface.InstanceName,
+						specificationProperty.Name,
+						"_" + relatedModel.Interface.InstanceName,
+						specificationProperty.PropertyType,
+						value));
+				}
+			}
+			else
+			{
+				function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, relatedModel, specificationProperty, "_" + relatedModel.Interface.InstanceName));
+			}
+		}
+
+		function.Add("this." + relatedModel.Interface.ListInstanceName + " = new List<" + TestingHelper.MockOf(relatedModel) + "> { this." + relatedModel.Interface.InstanceName + " };");
+	}
+
+	if(model.RelationshipsRequiredForUnitTesting.Count() > 0)
+		function.Add();
+		
+	if(model.Recursive.Count > 0)
+	{
+		if(model.Key != null)
+		{
+			function.Add("this.childKey = new Mock<" + model.KeyInterface.VariableType.Name + ">();");
+
+			foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+				function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, "childKey", specificationProperty, "_key"));
+
+			function.Add();
+		}
+
+		function.Add("this.child = " + TestingHelper.NewMockOf(model) + ";");
+		function.Add("this.child.SetupAllProperties();");
+
+		if(model.Key != null)
+			function.Add("this.child.Setup(_model => _model.Key).Returns(() => { return this.key.Object; });");
+
+		foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+			function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, "child", specificationProperty, "_model"));
+
+		function.Add();
+	}
+
+	if(model.Key != null)
+	{
+		function.Add("this.key = new Mock<" + model.KeyInterface.VariableType.Name + ">();");
+
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, "key", specificationProperty, "_key"));
+
+		function.Add("this.keys = new List<Mock<" + model.KeyInterface.VariableType.Name + ">>() { this.key };");
+		function.Add();
+	}
+
+	function.Add("this." + model.Interface.InstanceName + " = " + TestingHelper.NewMockOf(model) + ";");
+	function.Add("this." + model.Interface.InstanceName + ".SetupAllProperties();");
+
+	if(model.Key != null)
+		function.Add("this." + model.Interface.InstanceName + ".Setup(_model => _model.Key).Returns(() => { return this.key.Object; });");
+
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+		function.Add(TestingHelper.MockOutProperty(specification, model, ModelComponent.Repository, model, specificationProperty, "_model"));
+
+	function.Add("this." + model.Interface.ListInstanceName + " = new List<Mock<" + model.Interface.VariableType.Name + ">>() { " + model.Interface.InstanceName + " };");
+	function.Add();
+	function.Add("this.modelFactory = new Mock<IModelFactory>();");
+	
+	foreach(IRelationship relationship in model.RelationshipsRequiredForUnitTesting)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + relatedModel.KeyVariable.VariableType.Name + "(" + TestingHelper.ListOutPropertyTypes("It.IsAny<", relatedModel.Key.SpecificationProperties, ">()") + ")).Returns(this." + relatedModel.KeyInterface.InstanceName + ".Object);");
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + relatedModel.Variable.VariableType.Name + "(It.IsAny<" + relatedModel.KeyInterface.VariableType.Name + ">())).Returns(this." + relatedModel.Interface.InstanceName + ".Object);");
+	}
+	
+	if(model.Recursive.Count > 0)
+	{
+		string seperator = ", ";
+
+		string childMatch = string.Empty;
+		string match = string.Empty;
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+		{
+			if(childMatch.Length > 0)
+				childMatch += seperator;
+				
+			if(match.Length > 0)
+				match += seperator;
+
+			childMatch += "It.Is<" + specificationProperty.PropertyType + ">(_" + specificationProperty.InstanceName + " => _" + specificationProperty.InstanceName + " == this.childKey.Object." + specificationProperty.Name + ")";
+
+			match += "It.Is<" + specificationProperty.PropertyType + ">(_" + specificationProperty.InstanceName + " => _" + specificationProperty.InstanceName + " == this.key.Object." + specificationProperty.Name + ")";
+		}
+			
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + model.KeyVariable.VariableType.Name + "(" + childMatch + ")).Returns(() => this.childKey.Object);");
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + model.KeyVariable.VariableType.Name + "(" + match + ")).Returns(() => this.key.Object);");
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + model.Variable.VariableType.Name + "(It.Is<" + model.KeyInterface.VariableType.Name + ">(_" + model.KeyInterface.InstanceName + " => _" + model.KeyInterface.InstanceName + ".Equals(this.child.Object.Key)))).Returns(() => this.child.Object);");
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + model.Variable.VariableType.Name + "(It.Is<" + model.KeyInterface.VariableType.Name + ">(_" + model.KeyInterface.InstanceName + " => _" + model.KeyInterface.InstanceName + ".Equals(this." + model.Interface.InstanceName + ".Object.Key)))).Returns(() => this." + model.Interface.InstanceName + ".Object);");
+	}
+	else
+	{
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + model.KeyVariable.VariableType.Name + "(" + TestingHelper.ListOutPropertyTypes("It.IsAny<", model.Key.SpecificationProperties, ">()") + ")).Returns(this.key.Object);");
+		function.Add("this.modelFactory.Setup(mf => mf.Generate" + model.Variable.VariableType.Name + "(It.IsAny<" + model.KeyInterface.VariableType.Name + ">())).Returns(this." + model.Interface.InstanceName + ".Object);");
+	}
+	
+	function.Add();
+	function.Add("this.search = new Mock<" + model.SearchInterface.VariableType.Name + ">();");
+	function.Add("this.searchMultiple = new Mock<" + model.SearchMultipleInterface.VariableType.Name + ">();");
+	function.Add("this.transaction = new Mock<IDbTransaction>();");
+
+	return function;
+}
+
+IFunction Delete_Multiple_Test_Throws_Error_When_Any_Key_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Delete_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Throws_Error_When_Any_Key_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + model.KeyInterface.VariableType.Name + "> injected = new List<" + model.KeyInterface.VariableType.Name + ">() { new Mock<" + model.KeyInterface.VariableType.Name + ">().Object, null };");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Delete(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Delete_Test_Throws_Error_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Delete_" + model.Variable.VariableType.Name + "_Test_Throws_Error");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(NotSupportedException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.KeyInterface.VariableType.Name + " injected = new Mock<" + model.KeyInterface.VariableType.Name + ">().Object;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Delete(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Delete_Test_Throws_Error_When_Key_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Delete_" + model.Variable.VariableType.Name + "_Test_Throws_Error_When_Key_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.KeyInterface.VariableType.Name + " injected = null;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Delete(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Exists_Multiple_Test_Returns_Non_Null_List_When_Keys_Were_Not_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Exists_" + model.Variable.ListInstanceNameReference + "_Test_Returns_Non_Null_List_When_Keys_Were_Not_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " actual;");
+	function.Add(TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " injected = this.keys.Select(_key => _key.Object).ToList();");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Exists(injected);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.IsNotNull(actual);");
+
+	return function;
+}
+
+IFunction Exists_Multiple_Test_Returns_Empty_List_When_Keys_Were_Not_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Exists_" + model.Variable.ListInstanceNameReference + "_Test_Returns_Empty_List_When_Keys_Were_Not_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("int actual;");
+	function.Add("int expected = 0;");
+	function.Add(TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " injected = this.keys.Select(_key => _key.Object).ToList();");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Exists(injected).Count();");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.AreEqual(expected, actual);");
+
+	return function;
+}
+
+IFunction Exists_Multiple_Test_Returns_List_Of_Keys_When_They_Were_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Exists_" + model.Variable.ListInstanceNameReference + "_Test_Returns_List_Of_Keys_When_They_Were_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("int actual;");
+	function.Add("int expected = 1;");
+	function.Add(TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " injected = this.keys.Select(_key => _key.Object).ToList();");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Exists(injected).Count();");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.AreEqual(expected, actual);");
+
+	return function;
+}
+
+IFunction Exists_Test_Returns_False_When_Key_Was_Not_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Exists_" + model.Variable.VariableType.Name + "_Test_Returns_False_When_Key_Was_Not_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("bool actual;");
+	function.Add("bool expected = false;");
+	function.Add(model.KeyInterface.VariableType.Name + " injected = this.key.Object;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Exists(injected);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.AreEqual(expected, actual);");
+
+	return function;
+}
+
+IFunction Exists_Test_Returns_True_When_Key_Was_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Exists_" + model.Variable.VariableType.Name + "_Test_Returns_True_When_Key_Was_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("bool actual;");
+	function.Add("bool expected = true;");
+	function.Add(model.KeyInterface.VariableType.Name + " injected = this.key.Object;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Exists(injected);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.AreEqual(expected, actual);");
+
+	return function;
+}
+
+IFunction Insert_Multiple_Test_Does_Not_Get_Property_For_Every_Model_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Does_Not_Get_" + specificationProperty.Name + "_For_Every_" + model.Variable.VariableType.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Interface.InstanceName + " };");
+	function.Add("IList<" + model.Interface.VariableType.Name + "> injected = this." + model.Interface.ListInstanceName + ".Select(e => e.Object).ToList();");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(_" + model.Interface.InstanceName + " => _" + model.Interface.InstanceName + "." + specificationProperty.Name + ", Times.Never());");
+
+	return function;
+}
+
+IFunction Insert_Multiple_Test_Does_Not_Get_Keys_For_Related_Model_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Does_Not_Get_Keys_For_" + (relationship.ReferencingProperty.IsList ? "Any_" : string.Empty) + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+
+	if(relationship.ReferencingProperty.IsList)
+	{
+		function.Add("IList<" + TestingHelper.MockOf(relatedModel) + "> expected = this." + relatedModel.Interface.ListInstanceName + ";");
+		function.Add("IList<" + model.Interface.VariableType.Name + "> injected = this." + model.Variable.ListInstanceName + ".Select(e => e.Object).ToList();");
+	}
+	else
+	{
+		function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Variable.InstanceName + " };");
+		function.Add("IList<" + relatedModel.Interface.VariableType.Name + "> injected = expected.Select(e => e.Object).ToList();");
+	}
+
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	if(relationship.ReferencingProperty.IsList)
+	{
+		function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+		function.Add("\t" + relatedModel.Interface.InstanceName + ".VerifyGet(m => m.Key, Times.Never());");
+	}
+	else
+	{
+		function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+		function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(m => m." + relationship.ReferencingProperty.Name + ".Key, Times.Never());");
+	}
+
+	return function;
+}
+
+IFunction Insert_Multiple_Test_Gets_Property_For_Every_Model_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Gets_" + specificationProperty.Name + "_For_Every_" + model.Variable.VariableType.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Interface.InstanceName + " };");
+	function.Add("IList<" + model.Interface.VariableType.Name + "> injected = this." + model.Interface.ListInstanceName + ".Select(e => e.Object).ToList();");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(_" + model.Interface.InstanceName + " => _" + model.Interface.InstanceName + "." + specificationProperty.Name + ", Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Insert_Multiple_Test_Gets_Keys_For_Related_Model_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Gets_Keys_For_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(relatedModel) + "> expected = this." + relatedModel.Interface.ListInstanceName + ";");
+	function.Add("IList<" + model.Interface.VariableType.Name + "> injected = this." + model.Interface.ListInstanceName + ".Select(e => e.Object).ToList();");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object );");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+	function.Add("\t" + relatedModel.Interface.InstanceName + ".VerifyGet(_" + relatedModel.Interface.InstanceName + " => _" + relatedModel.Interface.InstanceName + ".Key);");
+
+	return function;
+}
+
+IFunction Insert_Multiple_Test_Throws_Error_When_Any_Model_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Throws_Error_When_Any_" + model.Variable.VariableType.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(TemplatesHelper.EnumerableOf(model.Interface.VariableType) + " injected = " + TemplatesHelper.NewOf(TemplatesHelper.ListOf(model.Interface.VariableType)) + " { this." + model.Interface.InstanceName + ".Object, null };");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Insert_Multiple_Test_Throws_Error_When_Models_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Throws_Error_When_" + model.Variable.VariableType.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(TemplatesHelper.EnumerableOf(model.Interface.VariableType) + " injected = null;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Insert_Test_Does_Not_Get_Models_Property_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_" + model.Variable.VariableType.Name + "_Test_Does_Not_Get_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(expected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e." + specificationProperty.Name + ", Times.Never());");
+
+	return function;
+}
+
+IFunction Insert_Test_Does_Not_Get_Related_Models_Keys_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_" + model.Variable.VariableType.Name + "_Test_Does_Not_Get_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name + "_Keys");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+
+	if(relationship.ReferencingProperty.IsList)
+		function.Add("IList<" + TestingHelper.MockOf(relatedModel) + "> expected = new List<" + TestingHelper.MockOf(relatedModel) + ">() { this." + relatedModel.Interface.InstanceName + " };");
+	else
+		function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+		
+	function.Add(TestingHelper.MockOf(model) + " injected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	if(relationship.ReferencingProperty.IsList)
+	{
+		function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+		function.Add("\t" + relatedModel.Interface.InstanceName + ".VerifyGet(m => m.Key, Times.Never());");
+	}
+	else
+	{
+		function.Add("expected.VerifyGet(e => e.Key, Times.Never());");
+	}
+
+	return function;
+}
+
+IFunction Insert_Test_Gets_Models_Property_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_" + model.Variable.VariableType.Name + "_Test_Gets_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(expected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e." + specificationProperty.Name + ", Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Insert_Test_Gets_Related_Models_Key_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_" + model.Variable.VariableType.Name + "_Test_Gets_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name + "_Key");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(relatedModel) + " expected = this." + relatedModel.Interface.InstanceName + ";");
+	function.Add(TestingHelper.MockOf(model) + " injected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e.Key, Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Insert_Test_Throws_Error_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_" + model.Variable.VariableType.Name + "_Test_Throws_Error");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(NotSupportedException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " injected = new Mock<" + model.Interface.VariableType.Name + ">().Object;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Insert_Test_Throws_Error_When_Model_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Insert_" + model.Variable.VariableType.Name + "_Test_Throws_Error_When_" + model.Variable.VariableType.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " injected = null;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Insert(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+void Recursively_Assert_Related_Models_Properties_Are_Set(IFunction function, IRelationship relationship)
+{
+	Recursively_Assert_Related_Models_Properties_Are_Set(function, string.Empty, relationship);
+}
+
+void Recursively_Assert_Related_Models_Properties_Are_Set(IFunction function, string prefix, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	foreach(ISpecificationProperty specificationProperty in relatedModel.SpecificationProperties.Values)
+	{
+		if(specificationProperty.Relationship != null && specificationProperty.Relationship is IBiologicalParent)
+		{
+			if(!specificationProperty.IsList)
+				Recursively_Assert_Related_Models_Properties_Are_Set(
+					function,
+					prefix + "." + specificationProperty.Name,
+					specificationProperty.Relationship);
+		}
+		else
+		{
+			StringBuilder expectedVerifySet = new StringBuilder("expected.VerifySet(e => ");
+
+			expectedVerifySet.Append("e").Append(prefix).Append(".").Append(specificationProperty.Name).Append(" = ");
+	
+			if(specificationProperty.IsList)
+				expectedVerifySet.Append("It.IsAny<" + specificationProperty.ListOf + ">()");
+			else
+				expectedVerifySet.Append("It.IsAny<" + specificationProperty.PropertyType + ">()");
+
+			expectedVerifySet.Append(", ").Append(TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + " " + specificationProperty.Name)).Append(");");
+
+			function.Add(expectedVerifySet.ToString());
+		}
+	}
+}
+
+void Recursively_Assert_Related_Models_Keys_Are_Set_But_Nothing_Else(IFunction function, IRelationship relationship)
+{
+	Recursively_Assert_Related_Models_Keys_Are_Set(function, "expected.Object", "actual", relationship);
+
+	function.Add();
+
+	Recursively_Assert_Related_Models_Properties_Are_Null(function, "expected.Object", "actual", relationship);
+}
+
+void Recursively_Assert_Related_Models_Keys_Are_Set(IFunction function, string expectedPrefix, string actualPrefix, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	function.Add("Assert.AreEqual(" + expectedPrefix + "." + relationship.ReferencingProperty.Name + ".Key, " + actualPrefix + "." + relationship.ReferencingProperty.Name + ".Key, " + TemplatesHelper.FormatString(relatedModel.Interface.VariableType.Name + " Key") + ");");
+
+	foreach(ISpecificationProperty specificationProperty in relatedModel.Key.SpecificationProperties)
+	{
+		if(specificationProperty.Relationship != null)
+			Recursively_Assert_Related_Models_Keys_Are_Set(
+				function,
+				expectedPrefix + "." + relationship.ReferencingProperty.Name,
+				actualPrefix + "." + relationship.ReferencingProperty.Name,
+				specificationProperty.Relationship);
+		else
+			function.Add("Assert.AreEqual(" + expectedPrefix + "." + relationship.ReferencingProperty.Name + "." + specificationProperty.Name + ", " + actualPrefix + "." + relationship.ReferencingProperty.Name + "." + specificationProperty.Name + ", " + TemplatesHelper.FormatString(specificationProperty.Name) + ");");
+	}
+}
+
+void Recursively_Assert_Related_Models_Properties_Are_Null(IFunction function, string expectedPrefix, string actualPrefix, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	foreach(ISpecificationProperty specificationProperty in relatedModel.Key.SpecificationProperties)
+	{
+		if(specificationProperty.Relationship != null)
+			Recursively_Assert_Related_Models_Properties_Are_Null(
+				function,
+				expectedPrefix + "." + relationship.ReferencingProperty.Name,
+				actualPrefix + "." + relationship.ReferencingProperty.Name,
+				specificationProperty.Relationship);
+	}
+
+	foreach(ISpecificationProperty specificationProperty in relatedModel.SpecificationProperties.Values)
+		if(!specificationProperty.IsKey && (specificationProperty.PropertyType == "string" || specificationProperty.PropertyType.Contains("?")))
+			function.Add("Assert.IsNull(" + actualPrefix + "." + relationship.ReferencingProperty.Name + "." + specificationProperty.Name + ", " + TemplatesHelper.FormatString(relatedModel.Interface.VariableType.Name + " " + specificationProperty.Name) + ");");
+}
+
+IFunction Select_Test_Calls_Generate_On_ModelFactory_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Calls_Generate_On_ModelFactory");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + model.Variable.VariableType.Name + "(It.IsAny<" + model.KeyInterface.VariableType.Name + ">()));");
+
+	return function;
+}
+
+IFunction Select_Test_Calls_GenerateKey_On_ModelFactory_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Calls_Generate" + model.KeyVariable.VariableType.Name + "_On_ModelFactory");
+	function.Tag("[TestMethod]");
+			 
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + model.KeyVariable.VariableType.Name + "(" + TestingHelper.ListOutPropertyTypes("It.IsAny<", model.Key.SpecificationProperties, ">()") + "));");
+
+	return function;
+}
+
+IFunction Select_Test_Calls_Generate_On_ModelFactory_For_Related_Model_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	ISpecificationProperty referencingProperty = relationship.ReferencingProperty;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Calls_Generate_On_ModelFactory_For_" + referencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + relatedModel.Variable.VariableType.Name + "(It.IsAny<" + relatedModel.KeyInterface.VariableType.Name + ">()));");
+
+	return function;
+}
+
+IFunction Select_Test_Calls_Generate_On_ModelFactory_For_Related_Models_Key_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	ISpecificationProperty referencingProperty = relationship.ReferencingProperty;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Calls_Generate" + relatedModel.KeyVariable.VariableType.Name + "_On_ModelFactory_For_" + referencingProperty.Name);
+	function.Tag("[TestMethod]");
+			 
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + relatedModel.KeyVariable.VariableType.Name + "(" + TestingHelper.ListOutPropertyTypes("It.IsAny<", relatedModel.Key.SpecificationProperties, ">()") + "));");
+
+	return function;
+}
+
+IFunction Select_Test_Sets_Property_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Sets_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	StringBuilder expectedVerifySet = new StringBuilder("expected.VerifySet(e => ");
+
+	if(specificationProperty.IsKey)
+		expectedVerifySet.Append("e.Key.");
+	else
+		expectedVerifySet.Append("e.");
+
+	expectedVerifySet.Append(specificationProperty.Name).Append(" = ");
+	
+	if(specificationProperty.IsList)
+		expectedVerifySet.Append("It.IsAny<" + specificationProperty.ListOf + ">()");
+	else
+		expectedVerifySet.Append("It.IsAny<" + specificationProperty.PropertyType + ">()");
+
+	expectedVerifySet.Append(", ").Append(TemplatesHelper.FormatString(specificationProperty.Name)).Append(");");
+
+	function.Add(expectedVerifySet.ToString());
+
+	return function;
+}
+
+IFunction Select_Test_Sets_Related_Models_Properties_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	ISpecificationProperty referencingProperty = relationship.ReferencingProperty;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Sets_" + model.Variable.VariableType.Name + "_" + referencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(relatedModel) + " expected = this." + relatedModel.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	Recursively_Assert_Related_Models_Properties_Are_Set(function, relationship);
+
+	return function;
+}
+
+IFunction Select_Test_Throws_Error_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Select_" + model.Variable.ListInstanceNameReference + "_Test_Throws_Error");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(NotSupportedException))]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<" + model.SearchMultipleInterface.VariableType.Name + "> injected = this.searchMultiple;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	return function;
+}
+
+IFunction SelectSingle_Test_Calls_Generate_On_ModelFactory_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Calls_Generate_On_ModelFactory");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + model.Variable.VariableType.Name + "(It.IsAny<" + model.KeyInterface.VariableType.Name + ">()));");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Calls_GenerateKey_On_ModelFactory_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Calls_Generate" + model.KeyVariable.VariableType.Name + "_On_ModelFactory");
+	function.Tag("[TestMethod]");
+			 
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + model.KeyVariable.VariableType.Name + "(" + TestingHelper.ListOutPropertyTypes("It.IsAny<", model.Key.SpecificationProperties, ">()") + "));");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Calls_Generate_On_ModelFactory_For_Related_Model_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Calls_Generate_On_ModelFactory_For_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + relatedModel.Variable.VariableType.Name + "(It.IsAny<" + relatedModel.KeyInterface.VariableType.Name + ">()));");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Calls_Generate_On_ModelFactory_For_Related_Models_Key_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	ISpecificationProperty referencingProperty = relationship.ReferencingProperty;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Calls_Generate" + relatedModel.KeyVariable.VariableType.Name + "_On_ModelFactory_For_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + relatedModel.KeyVariable.VariableType.Name + "(" + TestingHelper.ListOutPropertyTypes("It.IsAny<", relatedModel.Key.SpecificationProperties, ">()") + "));");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Returns_Model_When_Model_Is_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Returns_" + model.Variable.VariableType.Name + "_When_Is_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual;");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.IsNotNull(actual);");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Returns_Null_When_Model_Is_Not_Found_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Returns_Null_When_" + model.Variable.VariableType.Name + "_Is_Not_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.IsNull(actual);");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Sets_Property_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Sets_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	StringBuilder expectedVerifySet = new StringBuilder("expected.VerifySet(e => ");
+
+	if(specificationProperty.IsKey)
+		expectedVerifySet.Append("e.Key.");
+	else
+		expectedVerifySet.Append("e.");
+
+	expectedVerifySet.Append(specificationProperty.Name).Append(" = ");
+	
+	if(specificationProperty.IsList)
+		expectedVerifySet.Append("It.IsAny<" + specificationProperty.ListOf + ">());");
+	else
+		expectedVerifySet.Append("It.IsAny<" + specificationProperty.PropertyType + ">());");
+
+	function.Add(expectedVerifySet.ToString());
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Sets_Related_Models_Properties_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Sets_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name + "_Properties");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(relatedModel) + " expected = this." + relatedModel.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	Recursively_Assert_Related_Models_Properties_Are_Set(function, relationship);
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Calls_Generate_On_ModelFactory_Function(ISpecificationModel model, string unique)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_By_" + unique + "_Calls_Generate_On_ModelFactory");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + model.Variable.VariableType.Name + "());");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Calls_Generate_On_ModelFactory_For_Related_Model_Function(ISpecificationModel model, string unique, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_By_" + unique + "_Calls_Generate_On_ModelFactory_For_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<IModelFactory> expected = this.modelFactory;");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.Verify(e => e.Generate" + relatedModel.Variable.VariableType.Name + "());");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Returns_Model_When_Model_Is_Found_Function(ISpecificationModel model, string unique)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_By_" + unique + "_Returns_" + model.Variable.VariableType.Name + "_When_Is_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual;");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.IsNotNull(actual);");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Returns_Null_When_Model_Is_Not_Found_Function(ISpecificationModel model, string unique)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_By_" + unique + "_Returns_Null_When_" + model.Variable.VariableType.Name + "_Is_Not_Found");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " actual;");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("actual = this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("Assert.IsNull(actual);");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Sets_Property_Function(ISpecificationModel model, string unique, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_By_" + unique + "_Sets_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifySet(e => e." + specificationProperty.Name + ");");
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Sets_Related_Models_Properties_Function(ISpecificationModel model, string unique, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_By_" + unique + "_Sets_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name + "_Properties");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(relatedModel) + " expected = this." + relatedModel.Interface.InstanceName + ";");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+	
+	Recursively_Assert_Related_Models_Properties_Are_Set(function, relationship);
+
+	return function;
+}
+
+IFunction SelectSingle_Test_Throws_Error_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "SelectSingle_" + model.Variable.VariableType.Name + "_Test_Throws_Error");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(NotSupportedException))]");
+			
+	function.Add("//Arrange");
+	function.Add("Mock<" + model.SearchInterface.VariableType.Name + "> injected = this.search;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Select(injected.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+ 
+IFunction TestCleanupFunction()
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "TestCleanup");
+	function.Tag("[TestCleanup]");
+	
+	function.Add("base.TestCleanup();");
+	function.Add();
+	function.Add("this.dataSet = null;");
+	function.Add("this.repository = null;");
+
+	return function;
+}
+ 
+IFunction TestInitializeFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "TestInitialize");
+	function.Tag("[TestInitialize]");
+	
+	function.Add("base.TestInitialize();");
+	function.Add();
+	function.Add("this.dataSet = new DataSet();");
+	function.Add("DataTable table = this.dataSet.Tables.Add();");
+
+	if(model.Key != null)
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			function.Add("table.Columns.Add(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", typeof(" + specificationProperty.PropertyType.Replace("?", string.Empty) + "));");
+
+	foreach(ISpecificationProperty specificationProperty in model.SpecificationProperties.Values)
+	{
+		if(!specificationProperty.IsList)
+		{
+			if(specificationProperty.Relationship != null)
+			{
+				ISpecificationModel relatedModel = specificationProperty.Relationship.RelatedModel;
+				
+				if(relatedModel.Key != null)
+					foreach(ISpecificationProperty relatedSpecificationProperty in relatedModel.Key.SpecificationProperties.OrderBy(_sp => _sp.Name))
+						function.Add("table.Columns.Add(" + TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + relatedSpecificationProperty.Name) + ", typeof(" + relatedSpecificationProperty.PropertyType.Replace("?", string.Empty) + "));");
+						
+				foreach(ISpecificationProperty relatedSpecificationProperty in relatedModel.SpecificationProperties.Values.OrderBy(_sp => _sp.Name))
+					if(relatedSpecificationProperty.Relationship == null)
+						function.Add("table.Columns.Add(" + TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + relatedSpecificationProperty.Name) + ", typeof(" + relatedSpecificationProperty.PropertyType.Replace("?", string.Empty) + "));");
+			}
+			else
+			{
+				function.Add("table.Columns.Add(" + TemplatesHelper.FormatString(specificationProperty.Name) + ", typeof(" + specificationProperty.PropertyType.Replace("?", string.Empty) + "));");
+			}
+		}
+	}
+	
+	function.Add();
+	function.Add("//This is something you COULD do and use, although there are better data access options out there...");
+	function.Add("//this.databaseCommunicator.Setup(dc => dc.LoadDataset(It.IsAny<IDataContext>, It.IsAny<string>)).Returns(this.dataSet);");
+	function.Add();
+	function.Add("this.repository = new " + model.RepositoryVariable.VariableType.Name + "(this.modelFactory.Object);");
+	
+	return function;
+}
+
+IFunction Update_Multiple_Test_Does_Not_Get_Property_For_Model_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Does_Not_Get_" + specificationProperty.Name + "_For_" + model.Variable.VariableType.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Interface.InstanceName + " };");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(expected.Select(e => e.Object).ToList(), this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(m => m." + specificationProperty.Name + ", Times.Never());");
+
+	return function;
+}
+
+IFunction Update_Multiple_Test_Does_Not_Get_Key_For_Related_Model_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Does_Not_Get_Key_For_" + (relationship.ReferencingProperty.IsList ? "Any_" : string.Empty) + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	
+	if(relationship.ReferencingProperty.IsList)
+		function.Add("IList<" + TestingHelper.MockOf(relatedModel) + "> expected = this." + relatedModel.Interface.ListInstanceName + ";");
+	else
+		function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Interface.InstanceName + " };");
+		
+	function.Add();
+	function.Add("IList<" + model.Interface.VariableType.Name + "> injected = this." + model.Interface.ListInstanceName + ".Select(_mock => _mock.Object).ToList();");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	if(relationship.ReferencingProperty.IsList)
+	{
+		function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+		function.Add("\t" + relatedModel.Interface.InstanceName + ".VerifyGet(m => m.Key, Times.Never());");
+	}
+	else
+	{
+		function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+		function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(m => m." + relationship.ReferencingProperty.Name + ".Key, Times.Never());");
+	}
+
+	return function;
+}
+
+IFunction Update_Multiple_Test_Gets_Key_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Gets_Key_For_" + model.Variable.VariableType.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Interface.InstanceName + " };");
+	function.Add("IList<" + model.Interface.VariableType.Name + "> injected = expected.Select(e => e.Object).ToList();");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(m => m.Key, Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Update_Multiple_Test_Gets_Property_For_Model_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Gets_" + specificationProperty.Name + "_For_" + model.Variable.VariableType.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(model) + "> expected = new List<" + TestingHelper.MockOf(model) + ">() { this." + model.Interface.InstanceName + " };");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(expected.Select(e => e.Object).ToList(), this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(model) + " " + model.Interface.InstanceName + " in expected)");
+	function.Add("\t" + model.Interface.InstanceName + ".VerifyGet(m => m." + specificationProperty.Name + ", Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Update_Multiple_Test_Gets_Key_For_Related_Model_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Gets_Key_For_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add("IList<" + TestingHelper.MockOf(relatedModel) + "> expected = this." + relatedModel.Interface.ListInstanceName + ";");
+	function.Add("IList<" + model.Interface.VariableType.Name + "> injected = this." + model.Interface.ListInstanceName + ".Select(_mock => _mock.Object).ToList();");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+	function.Add("\t" + relatedModel.Interface.InstanceName + ".Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+	function.Add("\t" + relatedModel.Interface.InstanceName + ".VerifyGet(m => m.Key, Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Update_Multiple_Test_Throws_Error_When_Any_Model_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Throws_Error_When_Any_" + model.Variable.VariableType.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(TemplatesHelper.EnumerableOf(model.Interface.VariableType) + " expected = " + TemplatesHelper.NewOf(TemplatesHelper.ListOf(model.Interface.VariableType)) + " { this." + model.Interface.InstanceName + ".Object, null };");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Update(expected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Update_Multiple_Test_Throws_Error_When_Models_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_Multiple_" + model.Variable.ListInstanceNameReference + "_Test_Throws_Error_When_" + model.Variable.VariableType.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(TemplatesHelper.EnumerableOf(model.Interface.VariableType) + " expected = null;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Update(expected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Update_Test_Does_Not_Get_Models_Property_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Does_Not_Get_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("expected.Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(expected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e." + specificationProperty.Name + ", Times.Never());");
+
+	return function;
+}
+
+IFunction Update_Test_Does_Not_Get_Related_Models_Key_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Does_Not_Get_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name + "_Key");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	
+	if(relationship.ReferencingProperty.IsList)
+		function.Add("IList<" + TestingHelper.MockOf(relatedModel) + "> expected = new List<" + TestingHelper.MockOf(relatedModel) + ">() { this." + relatedModel.Interface.InstanceName + " };");
+	else
+		function.Add(TestingHelper.MockOf(relatedModel) + " expected = this." + relatedModel.Interface.InstanceName + ";");
+		
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("expected.Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(" + model.Interface.InstanceName + ".Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	if(relationship.ReferencingProperty.IsList)
+	{
+		function.Add("foreach(" + TestingHelper.MockOf(relatedModel) + " " + relatedModel.Interface.InstanceName + " in expected)");
+		function.Add("\t" + relatedModel.Interface.InstanceName + ".VerifyGet(m => m.Key, Times.Never());");
+	}
+	else
+	{
+		function.Add("expected.VerifyGet(e => e.Key, Times.Never());");
+	}
+
+	return function;
+}
+
+IFunction Update_Test_Gets_Models_Key_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Gets_" + model.Variable.VariableType.Name + "_Key");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("expected.Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(expected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e.Key, Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Update_Test_Gets_Models_Property_Function(ISpecificationModel model, ISpecificationProperty specificationProperty)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Gets_" + model.Variable.VariableType.Name + "_" + specificationProperty.Name);
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(model) + " expected = this." + model.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("AddRow(expected.Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("expected.Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(expected.Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e." + specificationProperty.Name + ", Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Update_Test_Gets_Related_Models_Key_Function(ISpecificationModel model, IRelationship relationship)
+{
+	ISpecificationModel relatedModel = relationship.RelatedModel;
+	
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Gets_" + model.Variable.VariableType.Name + "_" + relationship.ReferencingProperty.Name + "_Key");
+	function.Tag("[TestMethod]");
+			
+	function.Add("//Arrange");
+	function.Add(TestingHelper.MockOf(relatedModel) + " expected = this." + relatedModel.Interface.InstanceName + ";");
+	function.Add();
+	function.Add("AddRow(this." + model.Interface.InstanceName + ".Object);");
+	function.Add();
+	function.Add("//Act");
+	function.Add("expected.Invocations.Clear();");
+	function.Add();
+	function.Add("this.repository.Update(this." + model.Interface.InstanceName + ".Object, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+	function.Add("expected.VerifyGet(e => e.Key, Times.AtLeast(1));");
+
+	return function;
+}
+
+IFunction Update_Test_Throws_Error_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Throws_Error");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(NotSupportedException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " injected = new Mock<" + model.Interface.VariableType.Name + ">().Object;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Update(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+
+IFunction Update_Test_Throws_Error_When_Model_Is_Null_Function(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overridable, TemplateVariableType.Void, "Update_" + model.Variable.VariableType.Name + "_Test_Throws_Error_When_" + model.Variable.VariableType.Name + "_Is_Null");
+	function.Tag("[TestMethod]");
+	function.Tag("[ExpectedException(typeof(ArgumentNullException))]");
+			
+	function.Add("//Arrange");
+	function.Add(model.Interface.VariableType.Name + " injected = null;");
+	function.Add();
+	function.Add("//Act");
+	function.Add("this.repository.Update(injected, this.transaction.Object);");
+	function.Add();
+	function.Add("//Assert");
+
+	return function;
+}
+#>

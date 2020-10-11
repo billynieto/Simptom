@@ -1,0 +1,347 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+if(specification.Errors.Count() == 0)
+{
+	WriteLine("// No Errors");
+}
+else
+{
+	foreach(string error in specification.Errors)
+		WriteLine("// Error: " + error);
+}
+		
+if(specification.Warnings.Count() == 0)
+{
+	WriteLine("// No Warnings");
+}
+else
+{
+	foreach(string warning in specification.Warnings)
+		WriteLine("// Warning: " + warning);
+}
+			
+if(specification.Comments.Count() == 0)
+{
+	WriteLine("// No Comments");
+}
+else
+{
+	foreach(string comment in specification.Comments)
+		WriteLine("// Comment: " + comment);
+}
+		
+WriteLine(string.Empty);
+
+string listedOutModelNames = string.Empty;
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	WriteLine("#region " + model.Variable.VariableType.Name);
+	WriteLine(string.Empty);
+	
+	if(model.Recursive.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(IRelationship relationship in model.Recursive.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+		WriteLine("//Recursive: " + listedOutModelNames);
+		WriteLine(string.Empty);
+	}
+	
+	if(model.Associates.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(IRelationship relationship in model.Associates.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+		WriteLine("////Associates: " + listedOutModelNames);
+		
+		if(model.Admires.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.Admires.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Admires: " + listedOutModelNames);
+		}
+	
+		if(model.Enemies.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.Enemies.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Enemies: " + listedOutModelNames);
+		}
+	
+		if(model.Friends.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.Friends.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Friends: " + listedOutModelNames);
+		}
+	}
+	else
+	{
+		WriteLine("////Associates: None");
+	}
+	
+	WriteLine(string.Empty);
+	
+	if(model.Children.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(IRelationship relationship in model.Children.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+		WriteLine("////Children: " + listedOutModelNames);
+		
+		if(model.AdoptedChildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.AdoptedChildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Adopted Children: " + listedOutModelNames);
+		}
+	
+		if(model.BiologicalChildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.BiologicalChildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Biological Children: " + listedOutModelNames);
+		}
+	
+		if(model.CustodiedChildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.CustodiedChildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Custodied Children: " + listedOutModelNames);
+		}
+	
+		if(model.FosterChildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.FosterChildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Foster Children: " + listedOutModelNames);
+		}
+	
+		if(model.Godchildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.Godchildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Godchildren: " + listedOutModelNames);
+		}
+	
+		if(model.IllegitimateChildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.IllegitimateChildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Illegitimate Children: " + listedOutModelNames);
+		}
+	
+		if(model.OnlyChildren.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.OnlyChildren.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Only Children: " + listedOutModelNames);
+		}
+	}
+	else
+	{
+		WriteLine("////Children: None");
+	}
+	
+	WriteLine(string.Empty);
+	
+	if(model.Parents.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(IRelationship relationship in model.Parents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+		WriteLine("////Parents: " + listedOutModelNames);
+		
+		if(model.AdoptingParents.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.AdoptingParents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Adopting Parents: " + listedOutModelNames);
+		}
+	
+		if(model.BiologicalParents.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.BiologicalParents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Biological Parents: " + listedOutModelNames);
+		}
+	
+		if(model.FosterParents.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.FosterParents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Foster Parents: " + listedOutModelNames);
+		}
+	
+		if(model.IllegitimateParents.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.IllegitimateParents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Illegitimate Parents: " + listedOutModelNames);
+		}
+	
+		if(model.SingleParents.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.SingleParents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Single Parents: " + listedOutModelNames);
+		}
+	
+		if(model.UnfitParents.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IRelationship relationship in model.UnfitParents.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + relationship.RelatedModel.Variable.VariableType.Name;
+			
+			WriteLine("//Unfit Parents: " + listedOutModelNames);
+		}
+	}
+	else
+	{
+		WriteLine("////Parents: None");
+	}
+	
+	WriteLine(string.Empty);
+	
+	if(model.SignificantOthers.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(ISignificantOther significantOther in model.SignificantOthers.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + significantOther.RelatedModel.Variable.VariableType.Name + "(" + significantOther.Child.Variable.VariableType.Name + ")";
+			
+		WriteLine("////Significant Others: " + listedOutModelNames);
+		
+		if(model.Divorces.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IDivorce divorce in model.Divorces.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + divorce.RelatedModel.Variable.VariableType.Name + "(" + divorce.Child.Variable.VariableType.Name + ")";
+			
+			WriteLine("//Divorces: " + listedOutModelNames);
+		}
+	
+		if(model.Marriages.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(IMarriage marriage in model.Marriages.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + marriage.RelatedModel.Variable.VariableType.Name + "(" + marriage.Child.Variable.VariableType.Name + ")";
+			
+			WriteLine("//Marriages: " + listedOutModelNames);
+		}
+	
+		if(model.Seperations.Count() > 0)
+		{
+			listedOutModelNames = string.Empty;
+			foreach(ISeperated seperated in model.Seperations.OrderBy(_relationship => _relationship.RelatedModel.Variable.VariableType.Name))
+				listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + seperated.RelatedModel.Variable.VariableType.Name + "(" + seperated.Child.Variable.VariableType.Name + ")";
+			
+			WriteLine("//Seperations: " + listedOutModelNames);
+		}
+	}
+	else
+	{
+		WriteLine("////Significant Others: None");
+	}
+	
+	WriteLine(string.Empty);
+	
+	if(model.AffectedModels.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(ISpecificationModel affectedModel in model.AffectedModels.OrderBy(_model => _model.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + affectedModel.Variable.VariableType.Name;
+			
+		WriteLine("//Affected Models: " + listedOutModelNames);
+	}
+	else
+	{
+		WriteLine("//Affected Models: None");
+	}
+	
+	if(model.Dependants.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(ISpecificationModel dependant in model.Dependants.OrderBy(_model => _model.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + dependant.Variable.VariableType.Name;
+			
+		WriteLine("//Dependants: " + listedOutModelNames);
+	}
+	else
+	{
+		WriteLine("//Dependants: None");
+	}
+	
+	if(model.Guardians.Count() > 0)
+	{
+		listedOutModelNames = string.Empty;
+		foreach(ISpecificationModel guardian in model.Guardians.OrderBy(_model => _model.Variable.VariableType.Name))
+			listedOutModelNames += (listedOutModelNames.Length > 0 ? ", " : string.Empty) + guardian.Variable.VariableType.Name;
+			
+		WriteLine("//Guardians: " + listedOutModelNames);
+	}
+	else
+	{
+		WriteLine("//Guardians: None");
+	}
+	
+	WriteLine(string.Empty);
+	WriteLine("#endregion " + model.Variable.VariableType.Name);
+	WriteLine(string.Empty);
+}
+#>

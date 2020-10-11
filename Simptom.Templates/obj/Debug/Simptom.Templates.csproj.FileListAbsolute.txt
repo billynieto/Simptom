@@ -1,0 +1,42 @@
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Simptom.Templates.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Simptom.Templates.pdb
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Repository.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Repository.Framework.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Templates.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Templates.Framework.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Templates.Testing.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Templates.Testing.Framework.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.csproj.CoreCompileInputs.cache
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.csproj.CopyComplete
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.pdb
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Castle.Core.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Moq.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\System.Runtime.CompilerServices.Unsafe.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\System.Threading.Tasks.Extensions.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Castle.Core.xml
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\Moq.xml
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\System.Runtime.CompilerServices.Unsafe.xml
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\bin\Debug\System.Threading.Tasks.Extensions.xml
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.csprojAssemblyReference.cache
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Simptom.Templates.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Simptom.Templates.pdb
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Castle.Core.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Moq.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Repository.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Repository.Framework.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\System.Runtime.CompilerServices.Unsafe.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\System.Threading.Tasks.Extensions.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Templates.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Templates.Framework.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Templates.Testing.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Templates.Testing.Framework.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Castle.Core.xml
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\Moq.xml
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\System.Runtime.CompilerServices.Unsafe.xml
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\bin\Debug\System.Threading.Tasks.Extensions.xml
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.csproj.CoreCompileInputs.cache
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.csproj.CopyComplete
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.pdb
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Templates\obj\Debug\Simptom.Templates.csprojAssemblyReference.cache

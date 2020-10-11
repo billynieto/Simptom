@@ -1,0 +1,18 @@
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\bin\Debug\Simptom.Framework.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\bin\Debug\Simptom.Framework.pdb
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.csproj.CoreCompileInputs.cache
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.pdb
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\bin\Debug\Repository.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\bin\Debug\Repository.Framework.dll
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.csproj.CopyComplete
+C:\Users\nieto\Documents\Visual Studio 2017\Projects\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.csprojAssemblyReference.cache
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\bin\Debug\Simptom.Framework.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\bin\Debug\Simptom.Framework.pdb
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\bin\Debug\Repository.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\bin\Debug\Repository.Framework.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.csproj.CoreCompileInputs.cache
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.csproj.CopyComplete
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.dll
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.pdb
+C:\Users\nieto\Source\Repos\Simptom\Simptom.Framework\obj\Debug\Simptom.Framework.csprojAssemblyReference.cache

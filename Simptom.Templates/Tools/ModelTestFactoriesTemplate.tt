@@ -1,0 +1,145 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder factoriesDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.TestProject.Namespace.Name)
+	.Append(@"\Factories");
+DirectoryInfo factoriesDirectory = new DirectoryInfo(factoriesDirectoryPath.ToString());
+if(!factoriesDirectory.Exists)
+	factoriesDirectory.Create();
+	
+filesToGenerate.Add(GenerateValidModelFactoryFile(specification));
+
+GenerateFiles(factoriesDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateValidModelFactoryFile(ISpecification specification)
+{
+	IFile file = new TemplateFile(specification.Settings.TestFactoriesNamespace, "ValidModelFactory", "cs");
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkNamespace);
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.ModelsNamespace);
+	
+	file.Components.Enqueue(GenerateValidModelFactoryClass(specification, file.Namespace));
+
+	return file;
+}
+#>
+<#+
+IClass GenerateValidModelFactoryClass(ISpecification specification, INamespace _namespace)
+{
+	IClass _class = new TemplateClass(_namespace, "ValidModelFactory");
+	_class.WillImplement(specification.ModelFactoryInterface);
+	
+	foreach(ISpecificationModel model in specification.Models.Values)
+	{
+		_class.Add(GenerateValidFunction(specification, model));
+		_class.Add(GenerateKeyFunction(model));
+
+		if(model.HasRepositoryAndService)
+		{
+			_class.Add(GenerateSearchFunction(model));
+			_class.Add(GenerateSearchMultipleFunction(model));
+		}
+	}
+
+	return _class;
+}
+#>
+<#+
+IFunction GenerateValidFunction(ISpecification specification, ISpecificationModel model)
+{
+	return GenerateValidFunction(specification, model, new List<ISpecificationProperty>());
+}
+
+IFunction GenerateValidFunction(ISpecification specification, ISpecificationModel model, IEnumerable<ISpecificationProperty> additionalProperties)
+{
+	IList<IVariable> parameters = new List<IVariable>(){ new TemplateVariable(model.KeyInterface.VariableType.Name, model.KeyInterface.InstanceName) };
+	IFunction function = new TemplateFunction(Privacy.Public, model.Interface.VariableType, "Generate" + model.Variable.VariableType.Name, parameters);
+	
+	IList<object> values = new List<object>();
+	foreach(IVariable variable in parameters)
+		values.Add(variable);
+
+	if(TemplateClass.SystemClasses.Any(_class => _class.Name == model.Variable.VariableType.Name))
+		function.Add(model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " = new " + specification.Settings.ModelsNamespace.Name + "." + model.Variable.VariableType.Name + "(" + model.KeyInterface.InstanceName + ");");
+	else
+		function.Add(model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " = new " + model.Variable.VariableType.Name + "(" + model.KeyInterface.InstanceName + ");");
+		
+	IEnumerable<ISpecificationProperty> specificationProperties = model.SpecificationProperties.Values.Concat(additionalProperties);
+	foreach(ISpecificationProperty specificationProperty in specificationProperties.OrderBy(_specificationProperty => _specificationProperty.Name))
+		function.Add(TestingHelper.SetProperty(specification, model, specificationProperty));
+	
+	if(specificationProperties.Count() > 0)
+		function.Add();
+
+	function.Add("return " + model.Interface.InstanceName + ";");
+
+	return function;
+}
+
+IFunction GenerateKeyFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	
+	if(model.Key != null)
+		foreach(ISpecificationProperty specificationProperty in model.Key.SpecificationProperties)
+			parameters.Add(new TemplateVariable(specificationProperty.PropertyType, specificationProperty.InstanceName));
+
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType(model.KeyInterface.VariableType.Name), "Generate" + model.KeyVariable.VariableType.Name, parameters);
+	
+	function.Add(model.KeyInterface.VariableType.Name + " " + model.KeyInterface.InstanceName + " = new " + model.KeyVariable.VariableType.Name + "(" + TemplatesHelper.ListOutVariables(parameters) + ");");
+	function.Add();
+	function.Add("return " + model.KeyInterface.InstanceName + ";");
+
+	return function;
+}
+
+IFunction GenerateSearchFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType(model.SearchInterface.VariableType.Name), "Generate" + model.SearchVariable.VariableType.Name);
+	
+	function.Add(model.SearchVariable.VariableType.Name + " " + model.SearchVariable.InstanceName + " = new " + model.SearchVariable.VariableType.Name + "();");
+	function.Add();
+	function.Add("return " + model.SearchVariable.InstanceName + ";");
+
+	return function;
+}
+
+IFunction GenerateSearchMultipleFunction(ISpecificationModel model)
+{
+	IFunction function = new TemplateFunction(Privacy.Public, new TemplateVariableType(model.SearchMultipleInterface.VariableType.Name), "Generate" + model.SearchMultipleVariable.VariableType.Name);
+	
+	function.Add(model.SearchMultipleVariable.VariableType.Name + " " + model.SearchMultipleVariable.InstanceName + " = new " + model.SearchMultipleVariable.VariableType.Name + "();");
+	function.Add();
+	function.Add("return " + model.SearchMultipleVariable.InstanceName + ";");
+
+	return function;
+}
+#>

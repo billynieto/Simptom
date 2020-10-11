@@ -1,0 +1,675 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.2.1.2\lib\Templates.Framework.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.dll" #>
+<#@ Assembly name="$(SolutionDir)packages\T5.Templates.Testing.2.3.2\lib\Templates.Testing.Framework.dll" #>
+<#@ import namespace="Templates" #>
+<#@ import namespace="Templates.Framework" #>
+<#@ import namespace="Templates.Testing" #>
+<#@ import namespace="Templates.Testing.Framework" #>
+<#@ include file="Common.tt" #>
+<#
+//Debugger.Launch();
+
+DirectoryInfo currentDirectory = new FileInfo(Host.TemplateFile).Directory;
+DirectoryInfo projectDirectory = currentDirectory.Parent;
+DirectoryInfo solutionDirectory = projectDirectory.Parent;
+
+ISpecification specification = Specification.Load(solutionDirectory);
+
+StringBuilder servicesDirectoryPath = new StringBuilder()
+	.Append(solutionDirectory.FullName)
+	.Append(@"\")
+	.Append(specification.Settings.Solution.ServiceProject.Namespace.Name)
+	.Append(@"\Services");
+DirectoryInfo servicesDirectory = new DirectoryInfo(servicesDirectoryPath.ToString());
+if(!servicesDirectory.Exists)
+	servicesDirectory.Create();
+	
+foreach(ISpecificationModel model in specification.Models.Values)
+{
+	if(!model.HasRepositoryAndService)
+		continue;
+		
+	filesToGenerate.Add(GenerateServiceDesignerFile(specification, model));
+	if(new FileInfo(servicesDirectory.FullName + @"\" + model.ServiceVariable.VariableType.Name + ".cs").Exists == false)
+		filesToGenerate.Add(GenerateServiceFile(specification, model));
+}
+
+GenerateFiles(servicesDirectory.FullName, filesToGenerate);
+#>
+<#+
+IFile GenerateServiceDesignerFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.ServicesNamespace, model.ServiceVariable.VariableType.Name + ".Designer", "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.Uses(TemplateNamespace.System_Data);
+	file.Uses(TemplateNamespace.System_Linq);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.RepositoryNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.FrameworkRepositoriesNamespace);
+	file.Uses(specification.Settings.FrameworkServicesNamespace);
+	
+	file.Components.Enqueue(GenerateServiceDesignerClass(specification, file.Namespace, model));
+
+	return file;
+}
+
+IFile GenerateServiceFile(ISpecification specification, ISpecificationModel model)
+{
+	IFile file = new TemplateFile(specification.Settings.ServicesNamespace, model.ServiceVariable.VariableType.Name, "cs");
+	
+	file.Uses(TemplateNamespace.System);
+	file.Uses(TemplateNamespace.System_Collections_Generic);
+	file.Uses(TemplateNamespace.System_Data);
+	file.Uses(TemplateNamespace.System_Linq);
+	file.Uses(TemplateNamespace.System_Text);
+	file.NewUsingStatementBlock();
+	file.Uses(TestingHelper.RepositoryNamespace);
+	file.Uses(TestingHelper.RepositoryFrameworkNamespace);
+	file.NewUsingStatementBlock();
+	file.Uses(specification.Settings.FrameworkModelsNamespace);
+	file.Uses(specification.Settings.FrameworkRepositoriesNamespace);
+	file.Uses(specification.Settings.FrameworkServicesNamespace);
+	
+	file.Components.Enqueue(GenerateServiceClass(specification, file.Namespace, model));
+
+	return file;
+}
+#>
+<#+
+IClass GenerateServiceClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IClass _class = new TemplateClass(_namespace, model.ServiceVariable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkServicesNamespace, model.ServiceInterface.VariableType.Name));
+	
+	if(model.CanDelete)
+		_class.Add(DeleteMultipleFunction(model, false));
+
+	if(model.Tier == Tier.Primary)
+	{
+		if(model.BiologicalChildren.Count() > 0 || model.Admires.Count() > 0)
+			_class.Add(FindSingleFunction(model));
+	}
+	else
+	{
+		_class.Add(FindSingleErrorsOutFunction(model));
+	}
+		
+	if(!model.ReadOnly && (model.CanInsert || model.CanUpdate) && model.BiologicalChildren.Count() > 0 || model.Admires.Count() > 0)
+	{
+		_class.Add(SaveFunction(model, false));
+		_class.Add(SaveMultipleFunction(model, false));
+	}
+
+	return _class;
+}
+
+IClass GenerateServiceDesignerClass(ISpecification specification, INamespace _namespace, ISpecificationModel model)
+{
+	IClass _class = new TemplateClass(_namespace, model.ServiceVariable.VariableType.Name);
+	_class.IsPartial = true;
+	_class.Inherits(new TemplateGenericClass(TestingHelper.RepositoryNamespace, "ServiceBase", new List<string>() { model.Interface.VariableType.Name, model.KeyInterface.VariableType.Name, model.SearchInterface.VariableType.Name, model.SearchMultipleInterface.VariableType.Name }));
+	_class.WillImplement(new TemplateInterface(specification.Settings.FrameworkServicesNamespace, model.ServiceInterface.VariableType.Name));
+	
+	_class.Add(new TemplateVariable("IModelFactory", "modelFactory"), false, false);
+	_class.Add(new TemplateVariable(model.RepositoryInterface.VariableType.Name, model.RepositoryInterface.InstanceName), false, false);
+
+	foreach(IRelationship relationship in model.DirectlyDepandantRelationships)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		_class.Add(new TemplateProperty(relatedModel.ServiceInterface, true, false));
+	}
+		
+	_class.Add(PrimaryConstructor(model));
+	
+	if(model.DirectlyDepandantRelationships.Count > 0)
+		_class.Add(FullConstructor(model));
+	
+	if(model.ReadOnly || !model.CanDelete)
+	{
+		_class.Add(DeleteErrorsOutFunction(model));
+		_class.Add(DeleteMultipleErrorsOutFunction(model));
+	}
+	else
+	{
+		_class.Add(DeleteMultipleFunction(model, true));
+	}
+	
+	if(!model.ReadOnly && (model.CanInsert || model.CanUpdate))
+	{
+		_class.Add(SaveFunction(model, true));
+		_class.Add(SaveMultipleFunction(model, true));
+	}
+	else
+	{
+		_class.Add(SaveErrorsOutFunction(model));
+		_class.Add(SaveMultipleErrorsOutFunction(model));
+	}
+
+	return _class;
+}
+#>
+<#+
+IConstructor FullConstructor(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	parameters.Add(new TemplateVariable(model.RepositoryInterface.VariableType.Name, "repository"));
+	
+	foreach(IRelationship relationship in GetDistinct(model.DirectlyDepandantRelationships))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		parameters.Add(relatedModel.ServiceInterface);
+	}
+
+	parameters.Add(new TemplateVariable("IModelFactory", "modelFactory"));
+	
+	IList<IVariable> thisParameters = new List<IVariable>();
+	thisParameters.Add(new TemplateVariable(model.RepositoryInterface.VariableType.Name, "repository"));
+	thisParameters.Add(new TemplateVariable("IModelFactory", "modelFactory"));
+
+	IConstructor constructor = new TemplateConstructor(parameters);
+	constructor.This = thisParameters;
+	
+	foreach(IRelationship relationship in GetDistinct(model.DirectlyDepandantRelationships))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		constructor.Add("this." + relatedModel.ServiceInterface.InstanceName + " = " + relatedModel.ServiceInterface.InstanceName + ";");
+	}
+
+	return constructor;
+}
+
+IConstructor PrimaryConstructor(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>();
+	parameters.Add(model.RepositoryInterface);
+	parameters.Add(new TemplateVariable("IModelFactory", "modelFactory"));
+
+	IConstructor constructor = new TemplateConstructor(parameters);
+	constructor.Base = model.RepositoryParameter;
+	
+	constructor.Add("this.modelFactory = modelFactory;");
+	constructor.Add("this." + model.RepositoryInterface.InstanceName + " = (" + model.RepositoryInterface.VariableType.Name + ")this.repository;");
+
+	return constructor;
+}
+
+IFunction DeleteErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.KeyInterface.VariableType.Name, model.KeyInterface.InstanceName), new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Delete", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is read only and cannot be deleted!") + ");");
+
+	return function;
+}
+
+IFunction DeleteMultipleErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + model.KeyInterface.VariableType.Name + ">", model.KeyInterface.ListInstanceName), new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Delete", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is read only and cannot be deleted!") + ");");
+
+	return function;
+}
+
+IFunction DeleteMultipleFunction(ISpecificationModel model, bool isCommentedOut)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + model.KeyInterface.VariableType.Name + ">", "keys"), new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Delete", parameters);
+	function.IsCommentedOut = isCommentedOut;
+	function.Summary = "The Delete function is available in the non-designer portion of the class in case you need to customize it for any reason (e.g. dealing with AS400 Connections).  It is also being printed in the designer portion as it would if this class was being created new, so you may easily copy and paste to apply any needed, automated changes.";
+	
+	foreach(IRelationship relationship in GetDistinct(model.RelationshipsToDelete))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+		
+		function.Add("if(this." + relatedModel.ServiceInterface.InstanceName + " == null)");
+		function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(relatedModel.ServiceInterface.Reference + " was not provided when the " + model.ServiceInterface.Reference + " was created.  This is required when deleting " + model.Interface.ListInstanceNameReference + ".") + ");");
+	}
+
+	if(model.RelationshipsToDelete.Count() > 0)
+		function.Add();
+
+	function.Add("if(keys == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(model.Interface.ListInstanceNameReference) + ");");
+	function.Add("foreach(" + model.KeyInterface.VariableType.Name + " key in keys)");
+	function.Add("\tif(key == null)");
+	function.Add("\t\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Individual " + model.Variable.VariableType.Name) + ");");
+	function.Add("foreach(" + model.KeyInterface.VariableType.Name + " key in keys)");
+	function.Add("\tkey.Validate();");
+	function.Add();
+	function.Add("bool iOpenedTheConnection = false;");
+	function.Add("bool iStartedTheTransaction = false;");
+	function.Add();
+	function.Add("try");
+	function.Add("{");
+	function.Add("\tif (!this.repository.IsOpen)");
+	function.Add("\t{");
+	function.Add("\t\tiOpenedTheConnection = true;");
+	function.Add();
+	function.Add("\t\tthis.repository.Open();");
+	function.Add("\t}");
+	function.Add();
+	function.Add("\tif(transaction == null)");
+	function.Add("\t{");
+	function.Add("\t\tiStartedTheTransaction = true;");
+	function.Add();
+	function.Add("\t\ttransaction = this." + model.RepositoryInterface.InstanceName + ".StartTransaction();");
+	function.Add("\t}");
+	function.Add();
+	function.Add("\t" + TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " savedKeys = this.repository.Exists(keys);");
+	function.Add("\t" + TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " notSavedKeys = keys.Where(_key => !savedKeys.Any(_savedKey => _savedKey.Equals(_key)));");
+	function.Add();
+	function.Add("\tif(notSavedKeys.Count() > 0)");
+	function.Add("\t{");
+    function.Add("\t\tstring spacer = " + TemplatesHelper.FormatString("; ") + ";");
+	function.Add();
+    function.Add("\t\tStringBuilder stringBuilder = new StringBuilder();");
+    function.Add("\t\tforeach (" + model.KeyInterface.VariableType.Name + " key in notSavedKeys)");
+    function.Add("\t\t\tstringBuilder.Append(key.ToString()).Append(spacer);");
+	function.Add();
+    function.Add("\t\tstring error = stringBuilder.Remove(stringBuilder.Length - spacer.Length, spacer.Length).ToString();");
+	function.Add();
+    function.Add("\t\tthrow new KeyNotFoundException(error);");
+	function.Add("\t}");
+	function.Add();
+	function.Add("\tthis.repository.Delete(keys, transaction);");
+	function.Add();
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Commit();");
+	function.Add("}");
+	function.Add("catch");
+	function.Add("{");
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Rollback();");
+	function.Add();
+	function.Add("\tthrow;");
+	function.Add("}");
+	function.Add("finally");
+	function.Add("{");
+	function.Add("\tif(iOpenedTheConnection)");
+	function.Add("\t\tthis.repository.Close();");
+	function.Add();
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Dispose();");
+	function.Add("}");
+
+	return function;
+}
+
+IFunction ExistsErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.KeyInterface.VariableType.Name, model.KeyInterface.InstanceName) };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Boolean, "Exists", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is read only and doesn't need to be checked for existence!") + ");");
+
+	return function;
+}
+
+IFunction ExistsMultipleErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable("IEnumerable<" + model.KeyInterface.VariableType.Name + ">", model.KeyInterface.ListInstanceName) };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType), "Exists", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is read only and doesn't need to be checked for existence!") + ");");
+
+	return function;
+}
+
+IFunction FindSingleErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.SearchInterface.VariableType.Name, model.SearchInterface.InstanceName) };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, model.Interface.VariableType.Name, "FindSingle", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " does not support getting a single instance of itself!") + ");");
+
+	return function;
+}
+
+IFunction FindSingleFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.SearchInterface.VariableType.Name, model.SearchInterface.InstanceName) };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, model.Interface.VariableType.Name, "FindSingle", parameters);
+	function.Summary = "The Find Single function will most likely need to be customized to fit your needs.  If you need to find related Models when a single model is retrieved, you should do it here.  This can be done by specifying what fields to filter for the respective Searches.";
+
+	function.Add("if(" + model.SearchInterface.InstanceName + " == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(model.SearchVariable.VariableType.Name) + ");");
+	function.Add();
+	function.Add(model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " = base.FindSingle(" + model.SearchInterface.InstanceName + ");");
+	function.Add();
+	function.Add("if(" + model.Interface.InstanceName + " != null)");
+	function.Add("{");
+
+	int count = 0;
+	foreach(IRelationship relationship in model.CloseRelationships)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		if(relatedModel.HasRepositoryAndService && relationship.ReferencingProperty != null && relationship.ReferencingProperty.IsList)
+		{
+			if(count++ > 0)
+				function.Add();
+				
+			foreach(string line in GenerateFindRelatedModelLines(model, relationship, relatedModel))
+			  function.Add("\t" + line);
+		}
+	}
+	
+	function.Add("}");
+	function.Add();
+	function.Add("return " + model.Interface.InstanceName + ";");
+
+	return function;
+}
+
+IFunction SaveErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(model.Interface.VariableType.Name, model.Interface.InstanceName), new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Save", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is read only and cannot be saved!") + ");");
+
+	return function;
+}
+
+IFunction SaveFunction(ISpecificationModel model, bool isCommentedOut)
+{
+	IList<IVariable> parameters = new List<IVariable>() { model.Interface, new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Save", parameters);
+	function.IsCommentedOut = isCommentedOut;
+	
+	foreach(IRelationship relationship in GetDistinct(model.MonitoredRelationships))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+		
+		function.Add("if(this." + relatedModel.ServiceInterface.InstanceName + " == null)");
+ 		function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(relatedModel.ServiceInterface.Reference + " was not provided when the " + model.ServiceInterface.Reference + " was created.  This is required when saving " + model.Interface.Reference + ".") + ");");
+	}
+
+	if(model.MonitoredRelationships.Count() > 0)
+		function.Add();
+
+	function.Add("if(" + model.Interface.InstanceName + " == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(model.Interface.Reference) + ");");
+	function.Add(model.Interface.InstanceName + ".Validate();");
+	function.Add();
+	function.Add("bool iOpenedTheConnection = false;");
+	function.Add("bool iStartedTheTransaction = false;");
+	function.Add();
+	function.Add("try");
+	function.Add("{");
+	function.Add("\tif (!this.repository.IsOpen)");
+	function.Add("\t{");
+	function.Add("\t\tiOpenedTheConnection = true;");
+	function.Add();
+	function.Add("\t\tthis.repository.Open();");
+	function.Add("\t}");
+	function.Add();
+	function.Add("\tif(transaction == null)");
+	function.Add("\t{");
+	function.Add("\t\tiStartedTheTransaction = true;");
+	function.Add();
+	function.Add("\t\ttransaction = this." + model.RepositoryInterface.InstanceName + ".StartTransaction();");
+	function.Add("\t}");
+	
+	foreach(IRelationship relationship in GetDistinct(model.MonitoredRelationships))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add();
+				
+		if(relationship.ReferencingProperty.IsList)
+		{
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " " + relatedModel.KeyInterface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " from _" + relatedModel.Interface.InstanceName + " in _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + " select _" + relatedModel.Interface.InstanceName + ".Key).ToList();");
+			function.Add("\tif(" + relatedModel.KeyInterface.ListInstanceName + ".Count() > 0)");
+			function.Add("\t{");
+			function.Add("\t\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " saved" + relatedModel.KeyInterface.ListInstanceNameReference + " = this." + relatedModel.ServiceVariable.InstanceName + ".Exists(" + relatedModel.KeyInterface.ListInstanceName + ");");
+			function.Add("\t\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " missing" + relatedModel.KeyInterface.ListInstanceNameReference + " = " + relatedModel.KeyInterface.ListInstanceName + ".Where(_key => !saved" + relatedModel.KeyInterface.ListInstanceNameReference + ".Any(_storedKey => _storedKey.Equals(_key)));");
+			function.Add("\t\tif(missing" + relatedModel.KeyInterface.ListInstanceNameReference + ".Count() > 0)");
+			function.Add("\t\t\tthrow new KeyNotFoundException(" + TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + ": ") + " + RepositoryHelper.ListKeys(missing" + relatedModel.KeyInterface.ListInstanceNameReference + "));");
+			function.Add("\t}");
+		}
+		else
+		{
+			function.Add("\tif(" + model.Interface.InstanceName + " != null && !this." + relatedModel.ServiceInterface.InstanceName + ".Exists(" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + ".Key))");
+			function.Add("\t\tthrow new KeyNotFoundException(" + TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + ": ") + " + RepositoryHelper.ListKeys(new List<" + relatedModel.KeyInterface.VariableType.Name + ">() { " + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + ".Key }));");
+		}
+	}
+		
+	function.Add();
+	function.Add("\tif(!this.repository.Exists(" + model.Interface.InstanceName + ".Key))");
+	
+	if(model.CanInsert)
+		function.Add("\t\tthis.repository.Insert(" + model.Interface.InstanceName + ", transaction);");
+	else
+		function.Add("\t\tthrow new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " cannot be inserted.") + ");");
+
+	function.Add("\telse");
+	
+	if (model.CanUpdate)
+		function.Add("\t\tthis.repository.Update(" + model.Interface.InstanceName + ", transaction);");
+	else
+		function.Add("\t\tthrow new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " cannot be updated.") + ");");
+
+	foreach(IRelationship relationship in model.OwnedRelationships)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add();
+		function.Add("\t" + relatedModel.SearchMultipleInterface.VariableType.Name + " " + relatedModel.SearchMultipleInterface.InstanceName + " = this.modelFactory.Generate" + relatedModel.SearchMultipleVariable.VariableType.Name + "();");
+		function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " saved" + relatedModel.Interface.ListInstanceNameReference + " = this." + relatedModel.ServiceVariable.InstanceName + ".Find(" + relatedModel.SearchMultipleInterface.InstanceName + ");");
+
+		if(relationship.ReferencingProperty.IsList)
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " " + relatedModel.Interface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " from _" + relatedModel.Interface.InstanceName + " in _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + " select _" + relatedModel.Interface.InstanceName + ").ToList();");
+		else
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " " + relatedModel.Interface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " select _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + ").ToList();");
+
+		function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " removed" + relatedModel.Interface.ListInstanceNameReference + " = saved" + relatedModel.Interface.ListInstanceNameReference + ".Where(_saved" + relatedModel.Interface.InstanceNameReference + " => " + relatedModel.Interface.ListInstanceName + ".Any(_" + relatedModel.Interface.InstanceName + " => _" + relatedModel.Interface.InstanceName + ".Key.Equals(_saved" + relatedModel.Interface.InstanceNameReference + ".Key)));");
+
+		function.Add("\tthis." + relatedModel.ServiceInterface.InstanceName + ".Delete(removed" + relatedModel.Interface.ListInstanceNameReference + ".Select(_" + relatedModel.Interface.InstanceName + " => _" + relatedModel.Interface.InstanceName + ".Key), transaction);");
+		function.Add("\tthis." + relatedModel.ServiceInterface.InstanceName + ".Save(" + relatedModel.Interface.ListInstanceName + ", transaction);");
+	}
+	
+	function.Add();
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Commit();");
+	function.Add("}");
+	function.Add("catch");
+	function.Add("{");
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Rollback();");
+	function.Add();
+	function.Add("\tthrow;");
+	function.Add("}");
+	function.Add("finally");
+	function.Add("{");
+	function.Add("\tif(iOpenedTheConnection)");
+	function.Add("\t\tthis.repository.Close();");
+	function.Add();
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Dispose();");
+	function.Add("}");
+
+	return function;
+}
+
+IFunction SaveMultipleFunction(ISpecificationModel model, bool isCommentedOut)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName), new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Save", parameters);
+	function.IsCommentedOut = isCommentedOut;
+	function.Summary = "The Save function is available in the non-designer portion of the class in case you need to customize it for any reason (e.g. dealing with AS400 Connections).  It is also being printed in the designer portion as it would if this class was being created new, so you may easily copy and paste to apply any needed, automated changes.";
+	
+	foreach(IRelationship relationship in GetDistinct(model.MonitoredRelationships))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+		
+		function.Add("if(this." + relatedModel.ServiceInterface.InstanceName + " == null)");
+		function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(relatedModel.ServiceInterface.Reference + " was not provided when the " + model.ServiceInterface.Reference + " was created.  This is required when saving a " + model.Interface.Reference + ".") + ");");
+	}
+
+	if(model.MonitoredRelationships.Count() > 0)
+		function.Add();
+
+	function.Add("if(" + model.Interface.ListInstanceName + " == null)");
+	function.Add("\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString(model.Interface.ListInstanceNameReference) + ");");
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\tif(" + model.Interface.InstanceName + " == null)");
+	function.Add("\t\tthrow new ArgumentNullException(" + TemplatesHelper.FormatString("Individual " + model.Variable.VariableType.Name) + ");");
+	function.Add("foreach(" + model.Interface.VariableType.Name + " " + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + ")");
+	function.Add("\t" + model.Interface.InstanceName + ".Validate();");
+	function.Add();
+	function.Add("bool iOpenedTheConnection = false;");
+	function.Add("bool iStartedTheTransaction = false;");
+	function.Add();
+	function.Add("try");
+	function.Add("{");
+	function.Add("\tif (!this.repository.IsOpen)");
+	function.Add("\t{");
+	function.Add("\t\tiOpenedTheConnection = true;");
+	function.Add();
+	function.Add("\t\tthis.repository.Open();");
+	function.Add("\t}");
+	function.Add();
+	function.Add("\tif(transaction == null)");
+	function.Add("\t{");
+	function.Add("\t\tiStartedTheTransaction = true;");
+	function.Add();
+	function.Add("\t\ttransaction = this." + model.RepositoryInterface.InstanceName + ".StartTransaction();");
+	function.Add("\t}");
+	
+	foreach(IRelationship relationship in GetDistinct(model.MonitoredRelationships))
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add();
+				
+		if(relationship.ReferencingProperty.IsList)
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " " + relatedModel.KeyInterface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " from _" + relatedModel.Interface.InstanceName + " in _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + " select _" + relatedModel.Interface.InstanceName + ".Key).ToList();");
+		else
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " " + relatedModel.KeyInterface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " where _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + " != null select _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + ".Key).ToList();");
+
+		function.Add("\tif(" + relatedModel.KeyInterface.ListInstanceName + ".Count() > 0)");
+		function.Add("\t{");
+		function.Add("\t\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " saved" + relatedModel.KeyInterface.ListInstanceNameReference + " = this." + relatedModel.ServiceVariable.InstanceName + ".Exists(" + relatedModel.KeyInterface.ListInstanceName + ");");
+		function.Add("\t\t" + TemplatesHelper.EnumerableOf(relatedModel.KeyInterface.VariableType) + " missing" + relatedModel.KeyInterface.ListInstanceNameReference + " = " + relatedModel.KeyInterface.ListInstanceName + ".Where(_key => !saved" + relatedModel.KeyInterface.ListInstanceNameReference + ".Any(_storedKey => _storedKey.Equals(_key)));");
+		function.Add("\t\tif(missing" + relatedModel.KeyInterface.ListInstanceNameReference + ".Count() > 0)");
+		function.Add("\t\t\tthrow new KeyNotFoundException(" + TemplatesHelper.FormatString(relatedModel.Variable.VariableType.Name + ": ") + " + RepositoryHelper.ListKeys(missing" + relatedModel.KeyInterface.ListInstanceNameReference + "));");
+		function.Add("\t}");
+	}
+		
+	function.Add();
+	function.Add("\t" + TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " keys = " + model.Interface.ListInstanceName + ".Select(_" + model.Interface.InstanceName + " => _" + model.Interface.InstanceName + ".Key);");
+	function.Add("\t" + TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " savedKeys = this.repository.Exists(keys);");
+	function.Add("\t" + TemplatesHelper.EnumerableOf(model.KeyInterface.VariableType) + " notSavedKeys = keys.Where(_key => !savedKeys.Any(_savedKey => _savedKey.Equals(_key)));");
+
+	if(!model.CanInsert)
+	{
+		function.Add("\tif(notSavedKeys.Count() > 0)");
+		function.Add("\t\tthrow new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " cannot be inserted, and some of the provided Keys don't exist.") + ");");
+	}
+	else if (!model.CanUpdate)
+	{
+		function.Add("\tif(savedKeys.Count() > 0)");
+		function.Add("\t\tthrow new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " cannot be updated, and some of the provided Keys already exist.") + ");");
+	}
+	
+	function.Add();
+
+	if(model.CanInsert)
+	{
+		function.Add("\tthis.repository.Insert(" + model.Interface.ListInstanceName + ".Where(_" + model.Interface.InstanceName + " => notSavedKeys.Any(_key => _" + model.Interface.InstanceName + ".Key.Equals(_key))), transaction);");
+	}
+	if (model.CanUpdate)
+	{
+		function.Add("\tthis.repository.Update(" + model.Interface.ListInstanceName + ".Where(_" + model.Interface.InstanceName + " => savedKeys.Any(_key => _" + model.Interface.InstanceName + ".Key.Equals(_key))), transaction);");
+	}
+	
+	foreach(IRelationship relationship in model.OwnedRelationships)
+	{
+		ISpecificationModel relatedModel = relationship.RelatedModel;
+
+		function.Add();
+		function.Add("\t" + relatedModel.SearchMultipleInterface.VariableType.Name + " " + relatedModel.SearchMultipleInterface.InstanceName + " = this.modelFactory.Generate" + relatedModel.SearchMultipleVariable.VariableType.Name + "();");
+		function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " saved" + relatedModel.Interface.ListInstanceNameReference + " = this." + relatedModel.ServiceVariable.InstanceName + ".Find(" + relatedModel.SearchMultipleInterface.InstanceName + ");");
+
+		if(relationship.ReferencingProperty.IsList)
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " " + relatedModel.Interface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " from _" + relatedModel.Interface.InstanceName + " in _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + " select _" + relatedModel.Interface.InstanceName + ").ToList();");
+		else
+			function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " " + relatedModel.Interface.ListInstanceName + " = (from _" + model.Interface.InstanceName + " in " + model.Interface.ListInstanceName + " select _" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + ").ToList();");
+
+		function.Add("\t" + TemplatesHelper.EnumerableOf(relatedModel.Interface.VariableType) + " removed" + relatedModel.Interface.ListInstanceNameReference + " = saved" + relatedModel.Interface.ListInstanceNameReference + ".Where(_saved" + relatedModel.Interface.InstanceNameReference + " => " + relatedModel.Interface.ListInstanceName + ".Any(_" + relatedModel.Interface.InstanceName + " => _" + relatedModel.Interface.InstanceName + ".Key.Equals(_saved" + relatedModel.Interface.InstanceNameReference + ".Key)));");
+
+		function.Add("\tthis." + relatedModel.ServiceInterface.InstanceName + ".Delete(removed" + relatedModel.Interface.ListInstanceNameReference + ".Select(_" + relatedModel.Interface.InstanceName + " => _" + relatedModel.Interface.InstanceName + ".Key), transaction);");
+		function.Add("\tthis." + relatedModel.ServiceInterface.InstanceName + ".Save(" + relatedModel.Interface.ListInstanceName + ", transaction);");
+	}
+	
+	function.Add();
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Commit();");
+	function.Add("}");
+	function.Add("catch");
+	function.Add("{");
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Rollback();");
+	function.Add();
+	function.Add("\tthrow;");
+	function.Add("}");
+	function.Add("finally");
+	function.Add("{");
+	function.Add("\tif(iOpenedTheConnection)");
+	function.Add("\t\tthis.repository.Close();");
+	function.Add();
+	function.Add("\tif(iStartedTheTransaction)");
+	function.Add("\t\ttransaction.Dispose();");
+	function.Add("}");
+
+	return function;
+}
+
+IFunction SaveMultipleErrorsOutFunction(ISpecificationModel model)
+{
+	IList<IVariable> parameters = new List<IVariable>() { new TemplateVariable(TemplatesHelper.EnumerableOf(model.Interface.VariableType), model.Interface.ListInstanceName), new TemplateVariable(TemplateInterface.DbTransaction.Name, "transaction") };
+
+	IFunction function = new TemplateFunction(Privacy.Public, Overridability.Overriding, TemplateVariableType.Void, "Save", parameters);
+	function.Add("throw new NotSupportedException(" + TemplatesHelper.FormatString(model.Variable.VariableType.Name + " is read only and cannot be saved!") + ");");
+
+	return function;
+}
+#>
+<#+
+IList<string> GenerateFindRelatedModelLines(ISpecificationModel model, IRelationship relationship, ISpecificationModel relatedModel)
+{
+    IList<string> lines = new List<string>();
+
+	lines.Add("if(this." + relatedModel.ServiceInterface.InstanceName + " != null)");
+	lines.Add("{");
+	lines.Add("\t" + relatedModel.SearchMultipleInterface.VariableType.Name + " " + relatedModel.SearchMultipleInterface.InstanceName + " = this.modelFactory.Generate" + relatedModel.SearchMultipleVariable.VariableType.Name + "();");
+	lines.Add(string.Empty);
+	lines.Add("\t" + model.Interface.InstanceName + "." + relationship.ReferencingProperty.Name + " = new List<" + relatedModel.Interface.VariableType.Name + ">(this." + relatedModel.ServiceInterface.InstanceName + ".Find(" + relatedModel.SearchMultipleInterface.InstanceName + "));");
+	lines.Add("}");
+
+	return lines;
+}
+#>
