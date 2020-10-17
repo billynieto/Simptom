@@ -1,0 +1,20 @@
+﻿@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewBag.Title = "Edit Symptom";
+}
+@model Simptom.Web.ViewModels.SymptomViewModel
+<div class="row">
+    <div class="col-md-4">
+        @using (Html.BeginForm())
+        {
+            @Html.AntiForgeryToken()
+            @Html.HiddenFor(model => model.Symptom.Key.ID)
+            <span>Name:</span> @Html.TextBoxFor(x => x.Symptom.Name)
+            <span>Category:</span> @Html.DropDownListFor(x => x.Symptom.Category, new SelectList(Model.Categories, "Key.ID", "Name"))
+            <input type="submit" value="Save" class="btn btn-default" />
+        }
+    </div>
+</div>
+<div>
+    @Html.ActionLink("Back", "Index")
+</div>

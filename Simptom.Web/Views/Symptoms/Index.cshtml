@@ -1,0 +1,21 @@
+﻿@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewBag.Title = "Symptoms";
+}
+@model Simptom.Web.ViewModels.SymptomsViewModel
+<div class="row">
+    <div class="col-md-4">
+        @Html.ActionLink("New Symptom", "Create")
+    </div>
+</div>
+<div class="row">
+    @foreach (var symptom in Model.Symptoms)
+    {
+        <div class="col-md-4">
+            @symptom.Name
+            @symptom.Category.Name
+            @Html.ActionLink("Edit", "Edit", new { id = symptom.Key.ID }) |
+            @Html.ActionLink("Delete", "Delete", new { id = symptom.Key.ID })
+        </div>
+    }
+</div>

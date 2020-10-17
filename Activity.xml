@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<model>
+  <key>
+    <specificationProperties>
+      <specificationProperty name="ID" propertyType="Guid" />
+    </specificationProperties>
+  </key>
+  <specificationProperties>
+    <specificationProperty name="Category" propertyType="IActivityCategory" required="true" />
+    <specificationProperty name="Name" propertyType="string" maximum="50" required="true" />
+  </specificationProperties>
+</model>

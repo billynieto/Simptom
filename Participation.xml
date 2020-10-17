@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<model>
+  <key>
+    <specificationProperties>
+      <specificationProperty name="ID" propertyType="Guid" />
+    </specificationProperties>
+  </key>
+  <specificationProperties>
+    <specificationProperty name="Activity" propertyType="IActivity" />
+    <specificationProperty name="PerformedOn" propertyType="DateTime" required="true" />
+    <specificationProperty name="Severity" propertyType="double" minimum="0.0" maximum="1.0" required="true" />
+    <specificationProperty name="User" propertyType="IUser" />
+  </specificationProperties>
+</model>
